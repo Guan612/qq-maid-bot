@@ -2,7 +2,7 @@
 
 本文面向项目开发者和维护者，保留仓库级架构边界、开发命令、维护约定和检查规则。运行目录、部署、私有配置和运行数据细节已经分流到 [runtime/README.md](../runtime/README.md)；QQ 官方 gateway 细节见 [qq-maid-gateway-rs/README.md](../qq-maid-gateway-rs/README.md)；Rust Core 模块细节见 [qq-maid-core/README.md](../qq-maid-core/README.md)。
 
-当前稳定版本线为 `25.x`（`v0.25.2`）；发布变更与升级边界见 [CHANGELOG.md](../CHANGELOG.md)。
+当前稳定版本线为 `25.x`（`v0.25.3`）；发布变更与升级边界见 [CHANGELOG.md](../CHANGELOG.md)。
 
 如果只是第一次了解项目，请先阅读 [README.md](../README.md)。
 
@@ -28,6 +28,8 @@ QQ、OneBot、微信等入口接入相关能力优先在 gateway 的平台 adapt
 主动推送的成员提醒使用平台无关的 `PushMention { user_id, display_name }`。Core 只传递实际成员身份和业务归属，Gateway 再按平台生成 QQ 官方 `<@user_id>` 或 OneBot `at` segment；`PushTarget.account_id` 只选择机器人发送账号，不能代替被提醒成员身份。旧通知 payload 缺少 `mentions` 时按空列表兼容。
 
 群聊和频道属于多人共享 conversation session。Session 历史通过可选 `turn_actor` 保存当轮成员的脱敏 `actor_ref`、展示名来源和群角色，并让对应 user/assistant 消息保持同一归属；会话压缩与上下文裁剪必须保留该归属。`actor_ref` 只用于模型上下文中的历史成员对齐，不得作为权限判断、平台投递目标或对用户展示的稳定标识。
+
+会话 Compact 摘要属于模型派生的非指令数据，只保留会话事实、成员归属、话题和待处理事项，不保存机器人能力或 Provider 临时状态。聊天读取新旧摘要时统一使用独立的系统边界规则和低权限历史数据消息，预算裁剪也保留这一边界；不需要清库或数据库 migration。图片是否传入模型由运行时媒体状态与 Provider 能力决定。模型候选链只要有已加载候选支持视觉就保留原图，普通聊天、流式和 Tool Loop 在执行各候选时仅降级该候选的副本；不支持视觉的首候选仍按原顺序执行，不会仅因有图片而跳过。
 
 ## 项目结构
 
