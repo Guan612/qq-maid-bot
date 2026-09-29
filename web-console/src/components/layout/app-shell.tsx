@@ -40,6 +40,12 @@ function wait(duration: number): Promise<void> {
 export function AppShell() {
   const [restartOpen, setRestartOpen] = useState(false);
 
+  // 页面切换状态只有这一个实例：navigateTo 交给 NavList，overlay 由本组件渲染，
+  // 保证动画状态与过渡层来自同一份 hook state。
+  const navigate = useNavigate();
+  const navigateByPath = useCallback((to: string) => navigate({ to }), [navigate]);
+  const { navigateTo, transitionOverlay } = usePageTransition(navigateByPath);
+
   // 认证完成后加载用户界面偏好：主题自定义色、背景状态与旧 cookie 迁移以服务端为权威。
   useEffect(() => {
     void hydrateUserData();
@@ -65,19 +71,18 @@ export function AppShell() {
         aria-label="控制台页面"
         className="fixed bottom-4 left-1/2 z-50 w-[min(410px,calc(100vw-2rem))] -translate-x-1/2 border border-line bg-glass-raised p-1.5 shadow-console"
       >
-        <NavList />
+        <NavList navigateTo={navigateTo} />
       </nav>
 
       <RestartConfirmDialog open={restartOpen} onOpenChange={setRestartOpen} />
-      <PageTransition />
+      {transitionOverlay}
       <ConsoleToastHost />
     </>
   );
 }
 
-function NavList() {
+function NavList({ navigateTo }: { navigateTo: (to: string) => Promise<void> }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const { navigateTo } = usePageTransition();
   return (
     <ul className="m-0 flex list-none justify-between gap-1 p-0">
       {CONSOLE_PAGES.map((page) => {
@@ -187,9 +192,16 @@ function RestartConfirmDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   );
 }
 
-/** 页面切换过渡：只在点击导航时播放；中心切片由背景 controller 提供（无背景时为主题清洗过渡）。 */
-function usePageTransition() {
-  const navigate = useNavigate();
+/**
+ * 页面切换过渡：只在点击导航时播放；中心切片由背景 controller 提供（无背景时为主题清洗过渡）。
+ *
+ * 路由跳转通过参数注入（AppShell 传 useNavigate 包装），使动画时序与路由库解耦、可独立测试。
+ * 整个应用只在 AppShell 调用一次本 hook：navigateTo 与 transitionOverlay 必须来自同一份
+ * running state，否则触发切换的实例不渲染 overlay、渲染 overlay 的实例收不到触发。
+ */
+/** 页面切换过渡：只在点击导航时播放；中心切片由背景 controller 提供（无背景时为主题清洗过渡）。
+ * 整个应用只在 AppShell 调用一次本 hook；navigateTo 与 transitionOverlay 共享同一份 running state。 */
+export function usePageTransition(navigate: (to: string) => Promise<void> | void) {
   const [running, setRunning] = useState(false);
   const [transitionImage, setTransitionImage] = useState<TransitionImage>(null);
   const busyRef = useRef(false);
@@ -208,7 +220,7 @@ function usePageTransition() {
         setRunning(true);
         await wait(COVER_DURATION_MS);
       }
-      await navigate({ to });
+      await navigate(to);
       if (!reducedMotion) {
         await wait(WASHOUT_DURATION_MS);
         setRunning(false);
@@ -237,9 +249,4 @@ function usePageTransition() {
   );
 
   return { navigateTo, transitionOverlay };
-}
-
-function PageTransition() {
-  const { transitionOverlay } = usePageTransition();
-  return transitionOverlay;
 }

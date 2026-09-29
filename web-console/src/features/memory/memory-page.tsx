@@ -74,6 +74,18 @@ function buildParams(filters: Filters, page: number): MemoryListParams {
   };
 }
 
+/** 发起两阶段操作时的目标信息；服务端确认与它绑定，token 不跨目标或操作复用。 */
+type PendingTwoPhase =
+  | { operation: "delete_memory"; targetRef: string; memoryRef: string; expectedVersion: number }
+  | { operation: "clear_target" | "disable_group_profile"; targetRef: string };
+
+/** prepare 成功后保存的服务端确认：commit 只允许使用与之配对的目标与 token。 */
+type StoredConfirmation = {
+  pending: PendingTwoPhase;
+  confirmationToken: string;
+  affectedCount: number;
+};
+
 /** Memory 页：授权范围 discovery、筛选列表、受控写入与两阶段确认的范围操作。 */
 export function MemoryPage() {
   const queryClient = useQueryClient();
@@ -83,8 +95,7 @@ export function MemoryPage() {
   const [statusMessage, setStatusMessage] = useState<{ error: boolean; text: string } | null>(null);
   const [editing, setEditing] = useState<MemoryItem | null>(null);
   const [archiving, setArchiving] = useState<MemoryItem | null>(null);
-  const [deleting, setDeleting] = useState<MemoryItem | null>(null);
-  const [targetOp, setTargetOp] = useState<{ operation: "clear_target" | "disable_group_profile"; target: MemoryTargetView } | null>(null);
+  const [confirmation, setConfirmation] = useState<StoredConfirmation | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["memories", page, applied],
@@ -112,22 +123,62 @@ export function MemoryPage() {
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["memories"] });
   const refreshTargets = () => void queryClient.invalidateQueries({ queryKey: ["memory-targets"] });
 
-  const twoPhase = useMutation({
-    // 两阶段确认：prepare 拿一次性 confirmationToken，用户确认后 commit。
-    mutationFn: async (input: {
-      operation: "clear_target" | "disable_group_profile" | "delete_memory";
-      targetRef: string;
-      memoryRef?: string;
-      expectedVersion?: number;
-    }) => {
-      const confirmation = await prepareMemoryOperation(input);
-      return commitMemoryOperation({
-        operation: confirmation.operation,
-        targetRef: input.targetRef,
-        confirmationToken: confirmation.confirmationToken,
+  // 两阶段确认第一阶段：prepare 拿一次性 confirmationToken，成功后才打开确认对话框。
+  const prepareMutation = useMutation({
+    mutationFn: async (pending: PendingTwoPhase) => {
+      if (pending.operation === "delete_memory") {
+        return prepareMemoryOperation({
+          operation: "delete_memory",
+          targetRef: pending.targetRef,
+          memoryRef: pending.memoryRef,
+          expectedVersion: pending.expectedVersion,
+        });
+      }
+      return prepareMemoryOperation({ operation: pending.operation, targetRef: pending.targetRef });
+    },
+    onSuccess: (serverConfirmation, pending) => {
+      // 确认信息与发起目标绑定保存；api 层已校验返回范围与请求一致，token 不跨目标复用。
+      setConfirmation({
+        pending,
+        confirmationToken: serverConfirmation.confirmationToken,
+        affectedCount: serverConfirmation.affectedCount,
       });
     },
+    onError: (cause) => setStatusMessage({ error: true, text: cause instanceof Error ? cause.message : "Memory 操作准备失败" }),
   });
+
+  // 两阶段确认第二阶段：只有用户在对话框中确认后才 commit；取消或关闭一律不 commit。
+  const commitMutation = useMutation({
+    mutationFn: (stored: StoredConfirmation) =>
+      commitMemoryOperation({
+        operation: stored.pending.operation,
+        targetRef: stored.pending.targetRef,
+        confirmationToken: stored.confirmationToken,
+      }),
+    onSuccess: (result, stored) => {
+      // token 一次性：无论结果如何都关闭确认状态，重试必须重新 prepare。
+      setConfirmation(null);
+      refreshTargets();
+      invalidate();
+      if (stored.pending.operation === "delete_memory") {
+        // 服务端结果必须与原记录严格一致；验证失败不得报告成功。
+        if (result.deleted !== true || result.memoryRef !== stored.pending.memoryRef) {
+          setStatusMessage({ error: true, text: "Memory 删除结果无法与原记录确认" });
+          return;
+        }
+        setStatusMessage({ error: false, text: "Memory 已由服务端确认删除" });
+        return;
+      }
+      const noun = stored.pending.operation === "disable_group_profile" ? "停止画像并归档" : "清空";
+      setStatusMessage({ error: false, text: `服务端已完成${noun}：${result.affectedCount} 条` });
+    },
+    onError: (cause) => {
+      setConfirmation(null);
+      setStatusMessage({ error: true, text: cause instanceof Error ? cause.message : "Memory 操作失败" });
+    },
+  });
+
+  const beginTwoPhase = (pending: PendingTwoPhase) => prepareMutation.mutate(pending);
 
   const archiveMutation = useMutation({
     mutationFn: (item: MemoryItem) => archiveMemory({ targetRef: item.target.targetRef, memoryRef: item.memoryRef, expectedVersion: item.version }),
@@ -148,7 +199,7 @@ export function MemoryPage() {
     onError: (cause) => setStatusMessage({ error: true, text: cause instanceof Error ? cause.message : "Memory 恢复失败" }),
   });
 
-  const busy = archiveMutation.isPending || restoreMutation.isPending || twoPhase.isPending;
+  const busy = archiveMutation.isPending || restoreMutation.isPending || prepareMutation.isPending || commitMutation.isPending;
 
   const applyFilters = () => {
     setPage(1);
@@ -193,7 +244,9 @@ export function MemoryPage() {
       </div>
 
       <p aria-live="polite" role="status" className={`m-0 mt-3 text-sm ${statusMessage?.error ? "text-error" : "text-muted"}`}>
-        {statusMessage?.text ?? (listQuery.data ? `${listQuery.data.total} 条记忆` : "")}
+        {prepareMutation.isPending
+          ? "正在向服务端请求操作确认……"
+          : statusMessage?.text ?? (listQuery.data ? `${listQuery.data.total} 条记忆` : "")}
       </p>
 
       <div aria-live="polite" className="mt-3 flex flex-col gap-3">
@@ -207,7 +260,13 @@ export function MemoryPage() {
                 onEdit={setEditing}
                 onArchive={setArchiving}
                 onRestore={(target) => restoreMutation.mutate(target)}
-                onDelete={setDeleting}
+                onDelete={(item) =>
+                  beginTwoPhase({
+                    operation: "delete_memory",
+                    targetRef: item.target.targetRef,
+                    memoryRef: item.memoryRef,
+                    expectedVersion: item.version,
+                  })}
               />
             ))
           ) : listQuery.data ? (
@@ -237,10 +296,10 @@ export function MemoryPage() {
                 <span className="font-mono text-xs text-ink">{memoryTargetLabel(target)}</span>
                 <div className="flex gap-2">
                   {canClearTarget(target) ? (
-                    <Button variant="danger" disabled={busy} onClick={() => setTargetOp({ operation: "clear_target", target })} className="px-2.5 py-1.5 text-xs">清空此范围</Button>
+                    <Button variant="danger" disabled={busy} onClick={() => beginTwoPhase({ operation: "clear_target", targetRef: target.targetRef })} className="px-2.5 py-1.5 text-xs">清空此范围</Button>
                   ) : null}
                   {canDisableGroupProfile(target) ? (
-                    <Button variant="danger" disabled={busy} onClick={() => setTargetOp({ operation: "disable_group_profile", target })} className="px-2.5 py-1.5 text-xs">停止画像</Button>
+                    <Button variant="danger" disabled={busy} onClick={() => beginTwoPhase({ operation: "disable_group_profile", targetRef: target.targetRef })} className="px-2.5 py-1.5 text-xs">停止画像</Button>
                   ) : null}
                 </div>
               </div>
@@ -268,65 +327,24 @@ export function MemoryPage() {
         onConfirm={() => { if (archiving) archiveMutation.mutate(archiving); }}
       />
 
+      {/* 两阶段确认对话框：只在 prepare 成功后打开，展示服务端返回的确认信息。 */}
       <ConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(open) => { if (!open) setDeleting(null); }}
-        title="永久删除 Memory"
-        description="确定永久删除这条 Memory 吗？删除后无法恢复。确认提交后服务端完成校验并执行删除。"
-        confirmLabel="永久删除"
-        danger
-        busy={twoPhase.isPending}
-        onConfirm={() => {
-          if (!deleting) return;
-          twoPhase.mutate(
-            { operation: "delete_memory", targetRef: deleting.target.targetRef, memoryRef: deleting.memoryRef, expectedVersion: deleting.version },
-            {
-              onSuccess: (result) => {
-                if (result.deleted !== true || result.memoryRef !== deleting.memoryRef) {
-                  setStatusMessage({ error: true, text: "Memory 删除结果无法与原记录确认" });
-                  return;
-                }
-                setDeleting(null);
-                setStatusMessage({ error: false, text: "Memory 已由服务端确认删除" });
-                // 删除最后一条记录后 target 可能从服务端 discovery 消失，及时刷新范围。
-                refreshTargets();
-                invalidate();
-              },
-              onError: (cause) => setStatusMessage({ error: true, text: cause instanceof Error ? cause.message : "Memory 删除失败" }),
-            },
-          );
-        }}
-      />
-
-      <ConfirmDialog
-        open={targetOp !== null}
-        onOpenChange={(open) => { if (!open) setTargetOp(null); }}
-        title={targetOp?.operation === "disable_group_profile" ? "停止群画像" : "清空范围"}
-        description={targetOp
-          ? `此操作需要服务端确认；确认后将${targetOp.operation === "disable_group_profile" ? "停止画像并归档" : "清空"}该范围内的 Memory。`
-          : ""}
+        open={confirmation !== null}
+        onOpenChange={(open) => { if (!open) setConfirmation(null); }}
+        title={confirmation?.pending.operation === "disable_group_profile"
+          ? "停止群画像"
+          : confirmation?.pending.operation === "clear_target" ? "清空范围" : "永久删除 Memory"}
+        description={confirmation === null
+          ? ""
+          : confirmation.pending.operation === "delete_memory"
+            ? "服务端已准备确认。确定永久删除这条 Memory 吗？删除后无法恢复。"
+            : `确定${confirmation.pending.operation === "disable_group_profile" ? "停止画像并归档" : "清空"} ${confirmation.affectedCount} 条 Memory 吗？此操作需要服务端确认。`}
         confirmLabel="确认执行"
         danger
-        busy={twoPhase.isPending}
+        busy={commitMutation.isPending}
         onConfirm={() => {
-          if (!targetOp) return;
-          const { operation, target } = targetOp;
-          twoPhase.mutate(
-            { operation, targetRef: target.targetRef },
-            {
-              onSuccess: (result) => {
-                const noun = operation === "disable_group_profile" ? "停止画像并归档" : "清空";
-                setTargetOp(null);
-                setStatusMessage({ error: false, text: `服务端已完成${noun}：${result.affectedCount} 条` });
-                refreshTargets();
-                invalidate();
-              },
-              onError: (cause) => {
-                setTargetOp(null);
-                setStatusMessage({ error: true, text: cause instanceof Error ? cause.message : "Memory 操作失败" });
-              },
-            },
-          );
+          if (confirmation === null) return;
+          commitMutation.mutate(confirmation);
         }}
       />
     </Frame>
