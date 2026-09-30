@@ -73,7 +73,16 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
     queryFn: () => fetchModelMetadata(connection),
     staleTime: 0,
   });
-  const [discovery, setDiscovery] = useState<Record<string, unknown> | null>(null);
+  const discoveryKey = JSON.stringify([connection, discoveryRevision, credentialRevision]);
+  const [discoveryState, setDiscoveryState] = useState<{
+    scope: { key: string; connection: string; revision: string };
+    result: Record<string, unknown> | null;
+  }>(() => ({ scope: { key: discoveryKey, connection, revision: discoveryRevision }, result: null }));
+  // 仅重置发现状态，不重建面板或编辑器；scope 对象也区分切走后返回同一 revision 的请求。
+  if (discoveryState.scope.key !== discoveryKey) {
+    setDiscoveryState({ scope: { key: discoveryKey, connection, revision: discoveryRevision }, result: null });
+  }
+  const discovery = discoveryState.scope.key === discoveryKey ? discoveryState.result : null;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [visibleLimit, setVisibleLimit] = useState(50);
@@ -96,16 +105,17 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
   };
 
   const discoveryMutation = useMutation({
-    mutationFn: () => discoverConnectionModels(connection, discoveryRevision),
-    onSuccess: (result) => {
-      setDiscovery(result);
-      setStatus(discoveryLabel(result));
+    mutationFn: (scope: typeof discoveryState.scope) => discoverConnectionModels(scope.connection, scope.revision),
+    onSuccess: (result, scope) => {
+      // 用请求发起时的 scope 校验当前状态，迟到的成功和失败都不能跨版本回写。
+      setDiscoveryState((current) => current.scope === scope ? { ...current, result } : current);
     },
-    onError: (cause) => {
-      setDiscovery({ state: "failed", category: cause instanceof Error ? cause.message : "获取失败" });
-      setStatus(discoveryLabel({ state: "failed", category: cause instanceof Error ? cause.message : "获取失败" }));
+    onError: (cause, scope) => {
+      const result = { state: "failed", category: cause instanceof Error ? cause.message : "获取失败" };
+      setDiscoveryState((current) => current.scope === scope ? { ...current, result } : current);
     },
   });
+  const discoveryPending = discoveryMutation.isPending && discoveryMutation.variables === discoveryState.scope;
 
   const overrideMutation = useMutation({
     mutationFn: ({ expectedRevision, model }: { expectedRevision: string; model: unknown }) =>
@@ -188,8 +198,11 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
           <span className="ml-2 font-mono text-xs font-normal text-muted">共 {rows.length} 个 · 启用 {enabledCount}</span>
         </h4>
         <div className="ml-auto flex flex-wrap gap-2">
-          <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={!enabled || discoveryMutation.isPending} onClick={() => discoveryMutation.mutate()}>
-            {discoveryMutation.isPending ? "正在同步…" : "同步模型"}
+          <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={!enabled || discoveryPending} onClick={() => {
+            setStatus("");
+            discoveryMutation.mutate(discoveryState.scope);
+          }}>
+            {discoveryPending ? "正在同步…" : "同步模型"}
           </Button>
           <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={metadataQuery.isPending} onClick={() => void metadataQuery.refetch()}>
             刷新模型信息

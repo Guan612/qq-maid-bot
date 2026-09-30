@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { createRootRoute } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
 import { AppShell } from "../components/layout/app-shell.js";
 import { ConsoleBackground } from "../components/layout/console-background.js";
@@ -27,7 +27,7 @@ function AuthChecking() {
       <p className="console-mono-tag" role="status">
         正在恢复管理员会话…
       </p>
-      <Outlet />
+      {/* 会话恢复完成前不挂载业务路由，避免提前触发受保护 API。 */}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   updateConnectionCredential,
   updateModelOverride,
 } from "../src/api.js";
+import { ModelManagerPanel } from "../src/features/configuration/model-manager-panel.js";
 import { ProviderConnections } from "../src/features/configuration/provider-connections.js";
 import type { ConfigFieldSnapshot, ConfigurationSnapshot } from "../src/types.js";
 
@@ -408,6 +409,62 @@ describe("模型管理面板", () => {
     await view.selectProvider("MyProxy");
     return view;
   }
+
+  function renderDiscoveryManager() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const initial = { connection: "openai", discoveryRevision: "connection-a", credentialRevision: "credential-a" };
+    const tree = (scope: typeof initial) => (
+      <QueryClientProvider client={client}>
+        <ModelManagerPanel snapshot={snapshotFixture({})} enabled {...scope} />
+      </QueryClientProvider>
+    );
+    const view = render(tree(initial));
+    return { rerender: (change: keyof typeof initial) => view.rerender(tree({ ...initial, [change]: "new-value" })) };
+  }
+
+  it.each(["connection", "discoveryRevision", "credentialRevision"] as const)("%s 改变清除发现列表及成功文案，保留编辑草稿", async (change) => {
+    mockedDiscover.mockResolvedValueOnce({ state: "success", models: [{ id: "old-model" }] });
+    const view = renderDiscoveryManager();
+    await userEvent.click(screen.getByRole("button", { name: "同步模型" }));
+    await screen.findByText("模型 ID：old-model");
+    expect(screen.getByRole("status")).toHaveTextContent("获取成功");
+    await userEvent.click(screen.getByRole("button", { name: "编辑" }));
+    await userEvent.type(screen.getByLabelText("显示名称（留空继承）"), "尚未保存的草稿");
+
+    view.rerender(change);
+
+    expect(screen.queryByText("模型 ID：old-model")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加入 Route" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).not.toHaveTextContent("获取成功");
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("old-model");
+    expect(screen.getByLabelText("显示名称（留空继承）")).toHaveValue("尚未保存的草稿");
+  });
+
+  describe.each(["connection", "discoveryRevision", "credentialRevision"] as const)("%s 改变后的迟到发现请求", (change) => {
+    it.each(["success", "error"])("旧请求 %s 不覆盖当前版本结果及文案", async (outcome) => {
+      let resolve!: (value: Record<string, unknown>) => void;
+      let reject!: (reason: Error) => void;
+      const pending = new Promise<Record<string, unknown>>((done, fail) => { resolve = done; reject = fail; });
+      mockedDiscover.mockReturnValueOnce(pending);
+      const view = renderDiscoveryManager();
+      await userEvent.click(screen.getByRole("button", { name: "同步模型" }));
+      expect(mockedDiscover).toHaveBeenLastCalledWith("openai", "connection-a");
+      view.rerender(change);
+      // 旧请求仍在等待时，新版本可以独立同步。
+      mockedDiscover.mockResolvedValueOnce({ state: "success", models: [{ id: "new-model" }] });
+      await userEvent.click(screen.getByRole("button", { name: "同步模型" }));
+      await screen.findByText("模型 ID：new-model");
+      await act(async () => {
+        if (outcome === "success") resolve({ state: "success", models: [{ id: "old-model" }] });
+        else reject(new Error("旧版本获取失败"));
+        await pending.catch(() => undefined);
+      });
+      expect(screen.queryByText("模型 ID：old-model")).not.toBeInTheDocument();
+      expect(screen.getByText("模型 ID：new-model")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("获取成功");
+      expect(screen.getByRole("status")).not.toHaveTextContent("旧版本获取失败");
+    });
+  });
 
   it("发现结果与本地 metadata 合并展示，discovery 状态互不混淆", async () => {
     await openManager();

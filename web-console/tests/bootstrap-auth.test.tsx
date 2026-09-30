@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createMemoryHistory, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
+import { createHashHistory, createMemoryHistory, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsoleApiError, fetchBootstrap, fetchSession, issuePreAuth } from "../src/api.js";
@@ -72,6 +73,41 @@ describe("bootstrapAuth → React 启动状态", () => {
     await expectSingleToast();
   });
 
+  it("checking 不挂载业务页面，恢复成功后在原 hash 地址挂载", async () => {
+    const mounted = vi.fn();
+    function ChildPage() {
+      useEffect(() => { mounted(); }, []);
+      return <div>受保护的配置页面</div>;
+    }
+    let resolve!: (session: AdminSession) => void;
+    vi.mocked(fetchSession).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const previousUrl = window.location.href;
+    window.history.replaceState(null, "", "#/configuration");
+    const history = createHashHistory();
+    try {
+      const child = createRoute({ getParentRoute: () => Route, path: "/configuration", component: ChildPage });
+      const router = createRouter({ routeTree: Route.addChildren([child]), history });
+      render(<AppProviders client={client}><RouterProvider router={router} /></AppProviders>);
+      await screen.findByText("正在恢复管理员会话…");
+      let boot!: Promise<void>;
+      act(() => { boot = bootstrapAuth(); });
+      expect(screen.queryByText("受保护的配置页面")).not.toBeInTheDocument();
+      expect(mounted).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe("#/configuration");
+      await act(async () => {
+        resolve({ username: "test-admin", capabilities: [], csrfToken: "test-csrf", expiresAt: 1 });
+        await boot;
+      });
+      expect(await screen.findByText("受保护的配置页面")).toBeInTheDocument();
+      expect(mounted).toHaveBeenCalledTimes(1);
+      expect(window.location.hash).toBe("#/configuration");
+    } finally {
+      cleanup();
+      history.destroy();
+      window.history.replaceState(null, "", previousUrl);
+    }
+  });
+
   it("401 建立 pre-auth 后显示真实 AuthGate，只有一个 Toast Host", async () => {
     vi.mocked(fetchSession).mockRejectedValueOnce(new ConsoleApiError("未登录", "unauthorized", 401));
     vi.mocked(fetchBootstrap).mockResolvedValueOnce({ initialized: true, setupRequired: false, passwordResetPending: false, tokenFile: "", expiresAt: null });
@@ -82,6 +118,7 @@ describe("bootstrapAuth → React 启动状态", () => {
     expect(issuePreAuth).toHaveBeenCalledTimes(1);
     expect(store.get(authPhaseAtom)).toBe("unauthenticated");
     expect(await screen.findByLabelText("管理员密码")).toBeInTheDocument();
+    expect(screen.queryByText("页面内容")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "控制台页面" })).not.toBeInTheDocument();
     expect(screen.queryByText("正在恢复管理员会话…")).not.toBeInTheDocument();
     await expectSingleToast();
