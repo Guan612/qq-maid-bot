@@ -38,7 +38,9 @@ declare module "@tanstack/react-router" {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <JotaiProvider>
+    {/* stores/* 层的所有命令式写入都走 getDefaultStore()；裸 Provider 会另建私有 store，
+        导致认证状态等更新对组件树不可见（页面卡在"正在恢复管理员会话"），必须显式共用默认 store。 */}
+    <JotaiProvider store={getDefaultStore()}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>
