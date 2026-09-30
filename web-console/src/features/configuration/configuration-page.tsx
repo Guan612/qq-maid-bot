@@ -24,6 +24,8 @@ import {
   type ConfigurationBusinessGroup,
 } from "./configuration-navigation.js";
 import { configInputValue, configurationSummary, isEmptyInputValue, parseConfigInputValue } from "./configuration-values.js";
+import { PublicFieldRow } from "./configuration-field-row.js";
+import { ProviderConnections } from "./provider-connections.js";
 import { AgentEditor } from "./agent-editor.js";
 import { ThemePreferencesSection } from "./theme-preferences.js";
 import { BackgroundPreferencesSection } from "./background-preferences.js";
@@ -107,6 +109,11 @@ export function ConfigurationPage() {
     () => (snapshot?.fields ?? []).filter((field) => field.sensitivity === "secret"),
     [snapshot],
   );
+  // provider.* 公开字段由供应商连接卡片承载（含内置连接卡片），避免同页重复渲染。
+  const providerFields = useMemo(
+    () => (snapshot?.fields ?? []).filter((field) => field.key.startsWith("provider.")),
+    [snapshot],
+  );
 
   if (!snapshot) {
     return (
@@ -118,7 +125,9 @@ export function ConfigurationPage() {
   }
 
   const summary = configurationSummary(snapshot);
-  const activePublic = publicFields.filter((field) => businessGroupOf(field.key) === activeGroup);
+  const activePublic = publicFields.filter(
+    (field) => businessGroupOf(field.key) === activeGroup && !(activeGroup === "models-providers" && field.key.startsWith("provider.")),
+  );
   const activeSecret = secretFields.filter((field) => businessGroupOf(field.key) === activeGroup);
   const activeAgent = activeGroup === "models-providers" || activeGroup === "online-tools" || activeGroup === "memory-knowledge" || activeGroup === "model-routing";
 
@@ -213,6 +222,15 @@ export function ConfigurationPage() {
             ) : null}
 
             <div className="mt-4 flex flex-col gap-8">
+              {activeGroup === "models-providers" ? (
+                <ProviderConnections
+                  snapshot={snapshot}
+                  fields={providerFields}
+                  publicDraft={publicDraft}
+                  onDraftChange={(key, value) => setPublicDraft((current) => ({ ...current, [key]: value }))}
+                  onResult={setResult}
+                />
+              ) : null}
               {groupFieldsBySection(activePublic).map((section) => (
                 <section key={section.label} aria-label={section.label}>
                   <h3 className="m-0 mb-1 text-base font-bold">{section.label}</h3>
@@ -355,73 +373,6 @@ export function ConfigurationPage() {
   );
 }
 
-function PublicFieldRow({ field, value, onChange, onRemove, busy }: {
-  field: ConfigFieldSnapshot;
-  value: string | undefined;
-  onChange: (value: string) => void;
-  onRemove: () => void;
-  busy: boolean;
-}) {
-  const current = value ?? configInputValue(field);
-  const dirty = value !== undefined;
-  const id = `config-${field.key}`;
-  const range = ttsNumberRange(field.key);
-  return (
-    <div className="flex flex-col gap-1 border-b border-line-inner pb-3 last:border-b-0">
-      <Field
-        label={configFieldLabel(field.key)}
-        id={id}
-        hint={[
-          field.applyMode === "restart" ? "重启后生效" : null,
-          field.editable ? null : "只读",
-          dirty ? "有未保存修改" : null,
-          range ? `范围 ${range[0]} 到 ${range[1]} 的整数` : null,
-        ].filter(Boolean).join(" · ") || undefined}
-      >
-        {(props) =>
-          field.key === TTS_PROVIDER_KEY ? (
-            // TTS Provider 是受控下拉：保留未知历史值，避免把自定义 Provider 静默改写。
-            <select
-              {...props}
-              disabled={!field.editable}
-              value={current === "" ? "disabled" : current}
-              onChange={(event) => onChange(event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
-            >
-              {ttsProviderOptions(field.savedValue ?? field.effectiveValue).map(([optionValue, label]) => (
-                <option key={optionValue} value={optionValue}>{label}</option>
-              ))}
-            </select>
-          ) : field.valueType === "boolean" ? (
-            <select
-              {...props}
-              disabled={!field.editable}
-              value={current === "true" ? "true" : "false"}
-              onChange={(event) => onChange(event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
-            >
-              <option value="true">启用</option>
-              <option value="false">关闭</option>
-            </select>
-          ) : (
-            <Input
-              {...props}
-              type={field.valueType === "integer" ? "number" : "text"}
-              disabled={!field.editable}
-              value={current}
-              onChange={(event) => onChange(event.target.value)}
-            />
-          )
-        }
-      </Field>
-      {field.savedValue !== null && field.savedValue !== undefined && field.editable ? (
-        <Button variant="secondary" disabled={busy} onClick={onRemove} className="self-start px-2.5 py-1 text-xs">
-          恢复未保存值
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 /** Agent 策略的保存状态摘要：revision、来源与待重启标记；编辑能力见 agent-editor.tsx。 */
 function AgentStatusCard({ agent }: { agent: NonNullable<ConfigurationSnapshot["agent"]> }) {
