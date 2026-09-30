@@ -49,6 +49,11 @@ export function ConfigurationPage() {
 
   const snapshot = snapshotQuery.data;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["configuration"] });
+  // 切换业务域时清空上一次保存的结果提示，避免“供应商已删除”等信息串到无关标签页。
+  const changeGroup = (group: ConfigurationBusinessGroup) => {
+    setActiveGroup(group);
+    setResult(null);
+  };
 
   const runtimeSave = useMutation({
     mutationFn: ({ revision, changes }: { revision: string; changes: unknown[] }) => updateRuntimeConfiguration(revision, changes),
@@ -114,6 +119,11 @@ export function ConfigurationPage() {
     () => (snapshot?.fields ?? []).filter((field) => field.key.startsWith("provider.")),
     [snapshot],
   );
+  // provider.* secret（内置连接 API Key）内联到供应商详情面板；其余 secret 仍走页面级「密钥凭据」分节。
+  const providerSecrets = useMemo(
+    () => secretFields.filter((field) => field.key.startsWith("provider.")),
+    [secretFields],
+  );
 
   if (!snapshot) {
     return (
@@ -128,7 +138,10 @@ export function ConfigurationPage() {
   const activePublic = publicFields.filter(
     (field) => businessGroupOf(field.key) === activeGroup && !(activeGroup === "models-providers" && field.key.startsWith("provider.")),
   );
-  const activeSecret = secretFields.filter((field) => businessGroupOf(field.key) === activeGroup);
+  const activeSecret = secretFields.filter(
+    (field) => businessGroupOf(field.key) === activeGroup
+      && !(activeGroup === "models-providers" && field.key.startsWith("provider.")),
+  );
   const activeAgent = activeGroup === "models-providers" || activeGroup === "online-tools" || activeGroup === "memory-knowledge" || activeGroup === "model-routing";
 
   const savePublic = () => {
@@ -202,7 +215,7 @@ export function ConfigurationPage() {
                   role="tab"
                   aria-selected={activeGroup === group.id}
                   title={group.description}
-                  onClick={() => setActiveGroup(group.id)}
+                  onClick={() => changeGroup(group.id)}
                   className={`border border-line px-3 py-1.5 text-xs font-bold transition-colors ${
                     activeGroup === group.id ? "bg-accent-soft text-accent" : "text-muted hover:bg-accent-soft hover:text-ink"
                   }`}
@@ -229,6 +242,10 @@ export function ConfigurationPage() {
                   publicDraft={publicDraft}
                   onDraftChange={(key, value) => setPublicDraft((current) => ({ ...current, [key]: value }))}
                   onResult={setResult}
+                  secretFields={providerSecrets}
+                  secretDraft={secretDraft}
+                  onSecretDraftChange={(key, draft) => setSecretDraft((current) => ({ ...current, [key]: draft }))}
+                  onRequestSecretClear={setClearingKey}
                 />
               ) : null}
               {groupFieldsBySection(activePublic).map((section) => (
@@ -334,7 +351,7 @@ export function ConfigurationPage() {
                 <Button onClick={savePublic} disabled={runtimeSave.isPending}>
                   {runtimeSave.isPending ? "保存中…" : "保存普通配置"}
                 </Button>
-                {activeSecret.length > 0 ? (
+                {activeSecret.length > 0 || (activeGroup === "models-providers" && providerSecrets.length > 0) ? (
                   <Button onClick={saveSecrets} disabled={secretSave.isPending}>
                     {secretSave.isPending ? "保存中…" : "保存密钥变更"}
                   </Button>

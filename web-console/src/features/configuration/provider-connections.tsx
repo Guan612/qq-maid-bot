@@ -10,10 +10,12 @@ import { Button } from "../../components/ui/button.js";
 import { ConfirmDialog } from "../../components/ui/dialog.js";
 import { FormDialog } from "../../components/ui/form-dialog.js";
 import { Field, Input } from "../../components/ui/field.js";
+import { Switch } from "../../components/ui/switch.js";
 import { showToast } from "../../stores/toast.js";
 import type { ConfigFieldSnapshot, ConfigurationSnapshot } from "../../types.js";
+import { configInputValue } from "./configuration-values.js";
 import { PublicFieldRow } from "./configuration-field-row.js";
-import { ModelManagerDialog } from "./model-manager-dialog.js";
+import { ModelManagerPanel } from "./model-manager-panel.js";
 import {
   hasCanonicalProvider,
   removeProviderChange,
@@ -34,69 +36,149 @@ const DIAGNOSTIC_LABELS: Record<string, string> = { success: "成功", failed: "
 
 type ConnectionCredentialStatus = NonNullable<ConfigurationSnapshot["providers"]>["credentials"][string];
 
+type SecretDraft = { value: string; clear: boolean };
+
 type ProviderConnectionsProps = {
   snapshot: ConfigurationSnapshot;
-  /** provider.* 配置字段；公开字段渲染进内置连接卡片，secret 字段仍留在密钥凭据区。 */
+  /** provider.* 配置字段；公开字段渲染进内置连接卡片，secret 字段由页面密钥区移交到各服务商面板。 */
   fields: readonly ConfigFieldSnapshot[];
   publicDraft: Record<string, string>;
   onDraftChange: (key: string, value: string) => void;
   onResult: (result: { error: boolean; text: string }) => void;
+  /** provider.* secret 字段与页面级密钥草稿：API 密钥输入内联到服务商面板，保存仍走页面「保存密钥变更」。 */
+  secretFields: readonly ConfigFieldSnapshot[];
+  secretDraft: Record<string, SecretDraft>;
+  onSecretDraftChange: (key: string, draft: SecretDraft) => void;
+  /** 请求清除密钥：由页面级确认对话框承接破坏性操作。 */
+  onRequestSecretClear: (key: string) => void;
 };
 
-/** 供应商连接管理：内置连接展示、自定义连接增删改、Credential 与连接测试、模型管理入口。
- * 契约：保存走 set_provider / remove_provider；测试是真实最小模型调用；
+/** 供应商连接管理（Cherry Studio 风格主从布局）：
+ * 左侧服务商列表（内置 + 自定义，可搜索），右侧选中服务商详情
+ * （启用开关、API 密钥、API 地址、连接测试与内联模型管理）。
+ * 契约：内置连接走 runtime 字段（随「保存普通配置/保存密钥变更」提交），
+ * 自定义连接走 set_provider / remove_provider；测试是真实最小模型调用；
  * 获取模型成功不等于连接健康；删除被 Route 引用时的服务端拒绝原样展示，不伪造成功。 */
-export function ProviderConnections({ snapshot, fields, publicDraft, onDraftChange, onResult }: ProviderConnectionsProps) {
+export function ProviderConnections({
+  snapshot,
+  fields,
+  publicDraft,
+  onDraftChange,
+  onResult,
+  secretFields,
+  secretDraft,
+  onSecretDraftChange,
+  onRequestSecretClear,
+}: ProviderConnectionsProps) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
-  const [modelManagerFor, setModelManagerFor] = useState<string | null>(null);
   const saved = useMemo(() => savedProvidersOf(snapshot.agent), [snapshot.agent]);
   const credentials = snapshot.providers?.credentials ?? {};
   const presets = snapshot.providers?.presets ?? [];
 
-  const builtinCards = BUILTIN_PROVIDERS.map(([id, name]) => ({
-    id,
-    name,
-    fields: fields.filter((field) => field.key.startsWith(`provider.${id}.`) && field.sensitivity !== "secret"),
-  })).filter((card) => card.fields.length > 0);
+  const entries = useMemo(() => {
+    const list = [
+      ...BUILTIN_PROVIDERS.map(([id, name]) => ({ id, kind: "builtin" as const, name })),
+      ...Object.keys(saved).sort((left, right) => left.localeCompare(right)).map((id) => ({
+        id,
+        kind: "custom" as const,
+        name: typeof saved[id]?.display_name === "string" && saved[id]?.display_name ? saved[id]?.display_name as string : id,
+      })),
+    ];
+    const term = search.trim().toLowerCase();
+    if (!term) return list;
+    return list.filter((entry) => `${entry.name} ${entry.id}`.toLowerCase().includes(term));
+  }, [saved, search]);
 
-  const customIds = Object.keys(saved).sort((left, right) => left.localeCompare(right));
+  // 选中项兜底：列表变化（新建/删除）后保持有效选择，默认选第一个服务商。
+  const selectedId = selected !== null && entries.some((entry) => entry.id === selected)
+    ? selected
+    : entries[0]?.id ?? null;
+  const selectedEntry = entries.find((entry) => entry.id === selectedId);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="m-0 text-base font-bold">供应商连接</h3>
-          <p className="m-0 mt-1 text-xs leading-relaxed text-muted">
-            选择受信预设或创建自定义连接。保存后重启生效；Connection ID 创建后不能修改。
-          </p>
-        </div>
-        <Button disabled={snapshot.agent?.editable !== true} onClick={() => setCreating(true)}>+ 新建供应商</Button>
+    <section aria-label="供应商连接" className="flex flex-col gap-3">
+      <div>
+        <h3 className="m-0 text-base font-bold">供应商连接</h3>
+        <p className="m-0 mt-1 text-xs leading-relaxed text-muted">
+          左侧选择服务商，右侧编辑凭据、地址与模型。内置连接随「保存普通配置 / 保存密钥变更」提交；自定义连接重启后生效。
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {builtinCards.map((card) => (
-          <BuiltinConnectionCard
-            key={card.id}
-            snapshot={snapshot}
-            id={card.id}
-            name={card.name}
-            fields={card.fields}
-            onDraftChange={onDraftChange}
-            publicDraft={publicDraft}
-            onModelManager={() => setModelManagerFor(card.id)}
+      <div className="grid grid-cols-1 gap-0 border border-line lg:grid-cols-[15rem_1fr]">
+        <aside aria-label="服务商列表" className="flex min-h-64 flex-col gap-2 border-b border-line bg-glass-muted p-3 lg:border-b-0 lg:border-r">
+          <Input
+            aria-label="搜索供应商"
+            placeholder="搜索供应商…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="py-1.5 text-sm"
           />
-        ))}
-        {customIds.map((id) => (
-          <CustomConnectionCard
-            key={id}
-            snapshot={snapshot}
-            id={id}
-            saved={saved[id] ?? {}}
-            credential={credentials[id]}
-            onResult={onResult}
-            onModelManager={() => setModelManagerFor(id)}
-          />
-        ))}
+          <ul className="m-0 flex list-none flex-1 flex-col gap-0.5 overflow-y-auto p-0">
+            {entries.map((entry) => {
+              const providerEnabled = providerEnabledOf(entry, snapshot, fields, publicDraft, saved);
+              const connected = providerConnectedOf(entry, snapshot, fields, credentials);
+              const isSelected = entry.id === selectedId;
+              return (
+                <li key={`${entry.kind}:${entry.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(entry.id)}
+                    aria-current={isSelected ? "true" : undefined}
+                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                      isSelected ? "bg-accent-soft text-ink" : "text-ink hover:bg-accent-soft"
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`size-2 shrink-0 rounded-full ${connected && providerEnabled ? "bg-success" : "bg-[var(--console-border)]"}`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{entry.name}</span>
+                      <span className="block truncate font-mono text-[0.64rem] text-muted">{entry.id}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {entries.length === 0 ? (
+              <li className="px-2 py-4 text-xs text-muted">没有匹配的服务商。</li>
+            ) : null}
+          </ul>
+          <Button disabled={snapshot.agent?.editable !== true} onClick={() => setCreating(true)}>+ 新建供应商</Button>
+        </aside>
+
+        <div className="flex min-w-0 flex-col gap-5 p-4">
+          {selectedEntry?.kind === "builtin" ? (
+            <BuiltinProviderPane
+              key={selectedEntry.id}
+              snapshot={snapshot}
+              id={selectedEntry.id}
+              name={selectedEntry.name}
+              fields={fields}
+              publicDraft={publicDraft}
+              onDraftChange={onDraftChange}
+              secretFields={secretFields}
+              secretDraft={secretDraft}
+              onSecretDraftChange={onSecretDraftChange}
+              onRequestSecretClear={onRequestSecretClear}
+            />
+          ) : selectedEntry ? (
+            <CustomProviderPane
+              key={selectedEntry.id}
+              snapshot={snapshot}
+              id={selectedEntry.id}
+              saved={saved[selectedEntry.id] ?? {}}
+              preset={presets.find((candidate) => candidate.id === selectedEntry.id)}
+              credential={credentials[selectedEntry.id]}
+              presets={presets}
+              onResult={onResult}
+            />
+          ) : (
+            <p className="m-0 py-8 text-center text-sm text-muted">当前没有可管理的供应商；点左侧「+ 新建供应商」创建。</p>
+          )}
+        </div>
       </div>
 
       {creating ? (
@@ -108,80 +190,168 @@ export function ProviderConnections({ snapshot, fields, publicDraft, onDraftChan
           onResult={onResult}
         />
       ) : null}
-      {modelManagerFor !== null ? (
-        <ModelManagerDialog
-          snapshot={snapshot}
-          connection={modelManagerFor}
-          enabled={connectionEnabledFor(modelManagerFor, snapshot, fields)}
-          discoveryRevision={saved[modelManagerFor] ? snapshot.agent!.revision : snapshot.revision}
-          onClose={() => setModelManagerFor(null)}
-        />
-      ) : null}
-    </div>
+    </section>
   );
 }
 
-/** 内置连接启用状态来自运行字段；自定义连接来自保存配置。 */
-function connectionEnabledFor(id: string, snapshot: ConfigurationSnapshot, fields: readonly ConfigFieldSnapshot[]): boolean {
-  const custom = savedProvidersOf(snapshot.agent)[id];
-  if (custom && Object.keys(custom).length > 0) return custom.enabled !== false;
-  return fields.find((field) => field.key === `provider.${id}.enabled`)?.effectiveValue !== false;
+function providerEnabledOf(
+  entry: { id: string; kind: "builtin" | "custom" },
+  snapshot: ConfigurationSnapshot,
+  fields: readonly ConfigFieldSnapshot[],
+  publicDraft: Record<string, string>,
+  saved: Record<string, Record<string, unknown>>,
+): boolean {
+  if (entry.kind === "custom") return saved[entry.id]?.enabled !== false;
+  const field = fields.find((candidate) => candidate.key === `provider.${entry.id}.enabled`);
+  if (!field) return true;
+  return (publicDraft[field.key] ?? configInputValue(field)) !== "false";
 }
 
-function BuiltinConnectionCard({ snapshot, id, name, fields, publicDraft, onDraftChange, onModelManager }: {
+function providerConnectedOf(
+  entry: { id: string; kind: "builtin" | "custom" },
+  snapshot: ConfigurationSnapshot,
+  fields: readonly ConfigFieldSnapshot[],
+  credentials: Record<string, ConnectionCredentialStatus>,
+): boolean {
+  if (entry.kind === "custom") return credentials[entry.id]?.configured === true;
+  // 内置连接的可用性以服务端 secret 配置状态为准，前端拿不到也永远不需要原文。
+  return snapshot.providers?.credentials?.[entry.id]?.configured === true
+    || fields.some((candidate) => candidate.key === `provider.${entry.id}.api_key` && candidate.configured);
+}
+
+/* ------------------------------ 内置服务商面板 ----------------------------- */
+
+type BuiltinPaneProps = {
   snapshot: ConfigurationSnapshot;
   id: string;
   name: string;
   fields: readonly ConfigFieldSnapshot[];
   publicDraft: Record<string, string>;
   onDraftChange: (key: string, value: string) => void;
-  onModelManager: () => void;
-}) {
-  // 内置连接的密钥字段留在密钥凭据区；卡片只保留公开字段与诊断入口。
-  const enabledField = fields.find((field) => field.key.endsWith(".enabled"));
-  const enabled = enabledField?.effectiveValue !== false;
-  // 测试结果缓存键需要包含密钥 revision：密钥替换后旧诊断结论不再可信。
-  const secretRevision = snapshot.fields
-    .find((field) => field.key.startsWith(`provider.${id}.`) && field.sensitivity === "secret")?.revision ?? "";
+  secretFields: readonly ConfigFieldSnapshot[];
+  secretDraft: Record<string, SecretDraft>;
+  onSecretDraftChange: (key: string, draft: SecretDraft) => void;
+  onRequestSecretClear: (key: string) => void;
+};
+
+/** 内置连接：启用开关 + API 密钥（secret 草稿）+ API 地址 + 更多设置 + 测试 + 模型管理。 */
+function BuiltinProviderPane({
+  snapshot,
+  id,
+  name,
+  fields,
+  publicDraft,
+  onDraftChange,
+  secretFields,
+  secretDraft,
+  onSecretDraftChange,
+  onRequestSecretClear,
+}: BuiltinPaneProps) {
+  const providerFields = fields.filter((field) => field.key.startsWith(`provider.${id}.`));
+  const enabledField = providerFields.find((field) => field.key === `provider.${id}.enabled`);
+  const addressField = providerFields.find((field) => field.key === `provider.${id}.base_url`);
+  const extraFields = providerFields.filter((field) => field !== enabledField && field !== addressField);
+  const secretField = secretFields.find((field) => field.key === `provider.${id}.api_key`);
+  const secret = secretField ? secretDraft[secretField.key] : undefined;
+  const enabled = enabledField ? (publicDraft[enabledField.key] ?? configInputValue(enabledField)) !== "false" : true;
+  const dirty = providerFields.some((field) => publicDraft[field.key] !== undefined);
+
   return (
-    <section aria-label={`内置连接 ${id}`} className="border border-line bg-glass-muted p-4">
-      <h4 className="m-0 text-sm font-bold">{name} · {id}</h4>
-      <p className="m-0 mt-1 text-xs text-muted">内置连接：保留原配置来源，字段随「保存普通配置」提交。</p>
-      <div className="mt-3 flex flex-col gap-3">
-        {fields.map((field) => (
-          <PublicFieldRow
-            key={field.key}
-            field={field}
-            value={publicDraft[field.key]}
-            onChange={(value) => onDraftChange(field.key, value)}
-          />
-        ))}
+    <section aria-label={`供应商详情 ${id}`} className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="m-0 flex items-center gap-2 text-base font-bold">
+            {name}
+            <span className="font-mono text-xs font-normal text-muted">{id}</span>
+          </h4>
+          <p className="m-0 mt-0.5 text-xs text-muted">
+            内置连接：保留原配置来源，字段随「保存普通配置」提交；内置连接不可删除，不需要时停用即可。
+            {dirty ? <span className="ml-1 text-warning">有未保存修改</span> : null}
+          </p>
+        </div>
+        {enabledField ? (
+          <label className="flex items-center gap-2 text-sm">
+            <Switch
+              aria-label={`启用 ${id}`}
+              checked={enabled}
+              disabled={!enabledField.editable}
+              onChange={(event) => onDraftChange(enabledField.key, event.target.checked ? "true" : "false")}
+            />
+            启用
+          </label>
+        ) : null}
       </div>
-      <ConnectionTestPanel
-        id={id}
-        revision={snapshot.revision}
-        credentialRevision={secretRevision}
-        enabled={enabled}
-      />
-      <div className="mt-2">
-        <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={onModelManager}>管理模型</Button>
-      </div>
+
+      {secretField ? (
+        <div className="flex flex-col gap-1">
+          <Field
+            label="API 密钥"
+            id={`builtin-secret-${secretField.key}`}
+            hint={secretField.configured
+              ? "已配置；留空表示不修改；通过底部「保存密钥变更」提交"
+              : "尚未配置，输入后通过底部「保存密钥变更」提交"}
+          >
+            {(props) => (
+              <div className="flex gap-2">
+                <Input
+                  {...props}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder={secretField.configured ? "已配置；留空表示不修改" : "尚未配置"}
+                  disabled={!secretField.editable}
+                  value={secret?.value ?? ""}
+                  onChange={(event) => onSecretDraftChange(secretField.key, { value: event.target.value, clear: false })}
+                  className="flex-1"
+                />
+                {secretField.configured && secretField.editable ? (
+                  <Button variant="secondary" onClick={() => onRequestSecretClear(secretField.key)} className="px-2.5 py-1 text-xs">
+                    清除…
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </Field>
+          {secret?.clear ? <p className="m-0 text-xs text-warning">已选择清除：保存后将移除该密钥。</p> : null}
+        </div>
+      ) : null}
+
+      {addressField ? (
+        <PublicFieldRow field={addressField} value={publicDraft[addressField.key]} onChange={(value) => onDraftChange(addressField.key, value)} />
+      ) : null}
+
+      {extraFields.length > 0 ? (
+        <details>
+          <summary className="cursor-pointer text-xs font-semibold text-muted">更多设置</summary>
+          <div className="mt-2 flex flex-col gap-3">
+            {extraFields.map((field) => (
+              <PublicFieldRow key={field.key} field={field} value={publicDraft[field.key]} onChange={(value) => onDraftChange(field.key, value)} />
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      <ConnectionTestPanel id={id} revision={snapshot.revision} credentialRevision="" enabled={enabled} />
+      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={enabled} discoveryRevision={snapshot.revision} />
     </section>
   );
 }
 
-function CustomConnectionCard({ snapshot, id, saved, credential, onResult, onModelManager }: {
+/* ------------------------------ 自定义服务商面板 --------------------------- */
+
+type CustomPaneProps = {
   snapshot: ConfigurationSnapshot;
   id: string;
   saved: Record<string, unknown>;
+  preset: { name: string; kind: string; base_url: string; auth_header: string; auth_scheme: string } | undefined;
   credential: ConnectionCredentialStatus | undefined;
+  presets: NonNullable<ConfigurationSnapshot["providers"]>["presets"];
   onResult: (result: { error: boolean; text: string }) => void;
-  onModelManager: () => void;
-}) {
+};
+
+/** 自定义连接：保存/删除走 set_provider / remove_provider；Credential 即时 PATCH；删除被路线引用时原样报错。 */
+function CustomProviderPane({ snapshot, id, saved, preset, credential, presets, onResult }: CustomPaneProps) {
   const queryClient = useQueryClient();
   const agent = snapshot.agent!;
-  const presets = snapshot.providers?.presets ?? [];
-  const preset = presets.find((candidate) => candidate.id === id);
   const running = providerRecord(agent.runningValue, id);
   const [values, setValues] = useState<ConnectionFormValues>(() => formValuesFromSaved(id, saved, preset));
   const [error, setError] = useState("");
@@ -190,6 +360,7 @@ function CustomConnectionCard({ snapshot, id, saved, credential, onResult, onMod
   const [keyDraft, setKeyDraft] = useState("");
   const dirty = JSON.stringify(formValuesFromSaved(id, saved, preset)) !== JSON.stringify(values);
   const pending = JSON.stringify(saved) !== JSON.stringify(running) || credential?.pending_restart === true;
+  const enabled = values.enabled;
 
   const agentChange = useMutation({
     mutationFn: ({ changes }: { changes: unknown[] }) => updateAgentConfiguration(agent.revision, changes),
@@ -243,126 +414,109 @@ function CustomConnectionCard({ snapshot, id, saved, credential, onResult, onMod
 
   const credentialEditable = credential?.editable === true;
   return (
-    <section aria-label={`自定义连接 ${id}`} className="border border-line bg-glass-muted p-4">
-      <h4 className="m-0 text-sm font-bold">{typeof saved.display_name === "string" && saved.display_name ? saved.display_name : preset?.name ?? id}</h4>
-      <p className="m-0 mt-1 text-xs text-muted">
-        保存：{saved.enabled === false ? "停用" : "启用"} ·
-        运行：{Object.keys(running).length ? running.enabled === false ? "停用" : "启用" : "未加载"} ·
-        {" "}{pending ? "等待重启" : "已生效"}
-      </p>
-      <p className="m-0 text-xs text-muted">Credential：{credential?.configured ? "已配置" : "未配置"}</p>
+    <section aria-label={`供应商详情 ${id}`} className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="m-0 flex items-center gap-2 text-base font-bold">
+            {typeof saved.display_name === "string" && saved.display_name ? saved.display_name : preset?.name ?? id}
+            <span className="font-mono text-xs font-normal text-muted">{id}</span>
+          </h4>
+          <p className="m-0 mt-0.5 text-xs text-muted">
+            <span>保存：{saved.enabled === false ? "停用" : "启用"}</span>
+            <span> · </span>
+            <span>运行：{Object.keys(running).length ? running.enabled === false ? "停用" : "启用" : "未加载"}</span>
+            <span> · </span>
+            <span>{pending ? "等待重启" : "已生效"}</span>
+            <span> · </span>
+            <span>Credential：{credential?.configured ? "已配置" : "未配置"}</span>
+            {typeof saved.api_key_env === "string" && saved.api_key_env ? (
+              <>
+                <span> · </span>
+                <span>Credential 引用：{saved.api_key_env}（不可修改）</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <Switch aria-label={`启用供应商 ${id}`} checked={enabled} disabled={agent.editable !== true} onChange={(event) => setValues({ ...values, enabled: event.target.checked })} />
+            启用
+          </label>
+          <Button disabled={agent.editable !== true || agentChange.isPending} onClick={saveConnection}>
+            {agentChange.isPending ? "保存中…" : "保存连接"}
+          </Button>
+          <Button variant="danger" disabled={agent.editable !== true || agentChange.isPending} onClick={() => setConfirmingDelete(true)}>
+            删除供应商
+          </Button>
+        </div>
+      </div>
       {dirty ? <p className="m-0 text-xs text-warning">表单有未保存修改</p> : null}
 
-      <div className="mt-3 flex flex-col gap-3">
-        <Field label="Connection ID" id={`connection-${id}-identity`} hint="创建后不能修改">
-          {(props) => <Input {...props} value={id} disabled readOnly />}
+      <div className="flex flex-col gap-1">
+        <Field label="API 密钥（Credential）" id={`connection-${id}-credential`} hint={credential?.configured ? "已配置；保存后原文不会再次显示" : "尚未配置"}>
+          {(props) => (
+            <div className="flex gap-2">
+              <Input {...props} type="password" autoComplete="new-password" value={keyDraft} disabled={!credentialEditable} onChange={(event) => setKeyDraft(event.target.value)} className="flex-1" />
+              <Button disabled={!credentialEditable || keyDraft.length === 0 || credentialChange.isPending} onClick={() => credentialChange.mutate({ value: keyDraft })} className="px-2.5 py-1 text-xs">
+                保存 API Key
+              </Button>
+              {credential?.configured ? (
+                <Button variant="secondary" disabled={!credentialEditable || credentialChange.isPending} onClick={() => setClearingCredential(true)} className="px-2.5 py-1 text-xs">
+                  清除 API Key
+                </Button>
+              ) : null}
+            </div>
+          )}
         </Field>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="显示名称" id={`connection-${id}-display`}>
           {(props) => <Input {...props} value={values.display_name} onChange={(event) => setValues({ ...values, display_name: event.target.value })} />}
         </Field>
-        <Field label="协议 Adapter" id={`connection-${id}-kind`}>
-          {(props) => (
-            <select
-              {...props}
-              value={values.kind}
-              onChange={(event) => setValues({ ...values, kind: event.target.value })}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
-            >
-              {(snapshot.providers?.adapters ?? []).map((adapter) => (
-                <option key={adapter} value={adapter}>{adapter}</option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={values.enabled}
-            onChange={(event) => setValues({ ...values, enabled: event.target.checked })}
-          />
-          启用供应商
-        </label>
-        <Field label="Base URL" id={`connection-${id}-base-url`}>
+        <Field label="API 地址（Base URL）" id={`connection-${id}-base-url`}>
           {(props) => <Input {...props} value={values.base_url} onChange={(event) => setValues({ ...values, base_url: event.target.value })} />}
         </Field>
-        <details>
-          <summary className="cursor-pointer text-xs font-semibold">请求配置</summary>
-          <div className="mt-2 flex flex-col gap-3">
-            <Field label="认证 Header" id={`connection-${id}-auth-header`}>
-              {(props) => <Input {...props} value={values.auth_header} onChange={(event) => setValues({ ...values, auth_header: event.target.value })} />}
-            </Field>
-            <Field label="认证 Scheme（空表示无前缀）" id={`connection-${id}-auth-scheme`}>
-              {(props) => <Input {...props} value={values.auth_scheme} onChange={(event) => setValues({ ...values, auth_scheme: event.target.value })} />}
-            </Field>
-            <Field label="请求超时（秒，可留空）" id={`connection-${id}-timeout`}>
-              {(props) => <Input {...props} type="number" min="0" value={values.request_timeout_seconds} onChange={(event) => setValues({ ...values, request_timeout_seconds: event.target.value })} />}
-            </Field>
-            <p className="m-0 text-xs text-muted">Credential 引用：{stringField(saved.api_key_env)}（不可修改）</p>
-          </div>
-        </details>
       </div>
+      <Field label="Connection ID" id={`connection-${id}-identity`} hint="创建后不能修改">
+        {(props) => <Input {...props} value={id} disabled readOnly />}
+      </Field>
 
-      {error ? <p role="alert" className="m-0 mt-2 text-xs font-semibold text-error">{error}</p> : null}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button disabled={agentChange.isPending || snapshot.agent?.editable !== true} onClick={saveConnection}>
-          {agentChange.isPending ? "保存中…" : "保存连接"}
-        </Button>
-        <Button variant="danger" disabled={agentChange.isPending || snapshot.agent?.editable !== true} onClick={() => setConfirmingDelete(true)}>
-          删除供应商
-        </Button>
-      </div>
-
-      {credentialEditable ? (
-        <div className="mt-4 border-t border-line-inner pt-3">
-          <Field label="新增 / 替换 API Key" id={`connection-${id}-api-key`}>
+      <details>
+        <summary className="cursor-pointer text-xs font-semibold text-muted">更多设置</summary>
+        <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="协议 Adapter" id={`connection-${id}-kind`}>
             {(props) => (
-              <Input
+              <select
                 {...props}
-                type="password"
-                autoComplete="new-password"
-                value={keyDraft}
-                onChange={(event) => setKeyDraft(event.target.value)}
-              />
+                value={values.kind}
+                onChange={(event) => setValues({ ...values, kind: event.target.value })}
+                className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              >
+                {(snapshot.providers?.adapters ?? []).map((adapter) => (
+                  <option key={adapter} value={adapter}>{adapter}</option>
+                ))}
+              </select>
             )}
           </Field>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              disabled={credentialChange.isPending || snapshot.agent?.editable !== true}
-              onClick={() => {
-                const value = keyDraft;
-                setKeyDraft("");
-                if (!value.trim()) {
-                  setError("请输入 API Key");
-                  return;
-                }
-                credentialChange.mutate({ value });
-              }}
-            >
-              保存 API Key
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={credentialChange.isPending || snapshot.agent?.editable !== true || !credential?.configured}
-              onClick={() => setClearingCredential(true)}
-            >
-              清除 API Key
-            </Button>
-          </div>
+          <Field label="认证 Header" id={`connection-${id}-auth-header`}>
+            {(props) => <Input {...props} value={values.auth_header} onChange={(event) => setValues({ ...values, auth_header: event.target.value })} />}
+          </Field>
+          <Field label="认证 Scheme（空表示无前缀）" id={`connection-${id}-auth-scheme`}>
+            {(props) => <Input {...props} value={values.auth_scheme} onChange={(event) => setValues({ ...values, auth_scheme: event.target.value })} />}
+          </Field>
+          <Field label="请求超时（秒，可留空）" id={`connection-${id}-timeout`}>
+            {(props) => <Input {...props} type="number" min="0" value={values.request_timeout_seconds} onChange={(event) => setValues({ ...values, request_timeout_seconds: event.target.value })} />}
+          </Field>
         </div>
-      ) : (
-        <p className="m-0 mt-2 text-xs text-muted">历史环境变量凭证需在部署环境中修改。</p>
-      )}
+      </details>
 
-      <ConnectionTestPanel
-        id={id}
-        revision={agent.revision}
-        credentialRevision={credential?.revision ?? ""}
-        enabled={snapshot.agent?.editable === true && saved.enabled !== false}
-      />
-      <div className="mt-2">
-        <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={onModelManager}>管理模型</Button>
-      </div>
+      <ConnectionTestPanel id={id} revision={agent.revision} credentialRevision={credential?.revision ?? ""} enabled={agent.editable === true && saved.enabled !== false} />
+      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={saved.enabled !== false} discoveryRevision={agent.revision} />
+
+      <p aria-live="polite" role={error ? "alert" : "status"} className={`m-0 text-xs font-semibold ${error ? "text-error" : "text-muted"}`}>
+        {error}
+      </p>
 
       <ConfirmDialog
         open={confirmingDelete}
@@ -373,21 +527,23 @@ function CustomConnectionCard({ snapshot, id, saved, credential, onResult, onMod
         danger
         busy={agentChange.isPending}
         onConfirm={() => {
-          setConfirmingDelete(false);
-          agentChange.mutate({ changes: [removeProviderChange(id)] });
+          agentChange.mutate({ changes: [removeProviderChange(id)] }, {
+            onSuccess: () => setConfirmingDelete(false),
+          });
         }}
       />
       <ConfirmDialog
         open={clearingCredential}
         onOpenChange={setClearingCredential}
-        title="清除 API Key"
-        description="确定清除此 Credential？历史共享引用可能影响其他连接。"
+        title={`清除供应商 ${id} 的 Credential`}
+        description="清除后依赖该连接的功能可能无法使用。确认清除？"
         confirmLabel="清除"
         danger
         busy={credentialChange.isPending}
         onConfirm={() => {
-          setClearingCredential(false);
-          credentialChange.mutate({ value: null });
+          credentialChange.mutate({ value: null }, {
+            onSuccess: () => setClearingCredential(false),
+          });
         }}
       />
     </section>
@@ -549,7 +705,7 @@ function ConnectionTestPanel({ id, revision, credentialRevision, enabled }: {
     onError: (cause) => setLastTest({ key: cacheKey, text: cause instanceof Error ? cause.message : "连接测试失败" }),
   });
   return (
-    <div className="mt-4 border-t border-line-inner pt-3">
+    <div className="border-t border-line-inner pt-3">
       <Field label="测试模型 ID（将产生一次最小真实调用）" id={`connection-${id}-test-model`}>
         {(props) => <Input {...props} value={model} disabled={!enabled} onChange={(event) => setModel(event.target.value)} />}
       </Field>

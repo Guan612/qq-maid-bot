@@ -4,12 +4,14 @@ import {
   ConsoleApiError,
   discoverConnectionModels,
   fetchModelMetadata,
+  testProviderConnection,
   updateAgentConfiguration,
   updateModelOverride,
 } from "../../api.js";
 import { Button } from "../../components/ui/button.js";
-import { FormDialog } from "../../components/ui/form-dialog.js";
-import { Field, Input } from "../../components/ui/field.js";
+import { Input } from "../../components/ui/field.js";
+import { StatusBadge } from "../../components/ui/status-badge.js";
+import { Switch } from "../../components/ui/switch.js";
 import type { ConfigurationSnapshot } from "../../types.js";
 import {
   CAPABILITY_KEYS,
@@ -33,22 +35,36 @@ const MODEL_FILTERS = [
   ["deprecated", "Deprecated"],
 ] as const;
 
-const PROVENANCE_LABELS: Record<string, string> = { catalog: "目录", official_patch: "官方补丁", local_override: "本地覆盖" };
+/** 行内展示的来源徽标；文案与 provider-model-data 的 sources 字符串一一对应。 */
+const SOURCE_BADGES: Record<string, string> = {
+  "connection discovery": "发现",
+  catalog: "目录",
+  "local override": "本地覆盖",
+};
 
-type ModelManagerDialogProps = {
+const CHECK_LABELS: Record<string, string> = { success: "成功", failed: "失败", unknown: "无法确认", not_tested: "未测试" };
+
+/** 目录状态徽标色调：仅映射目录声明的 status 值，未知值回落 neutral。 */
+const STATUS_TONES: Record<string, "success" | "warning" | "error" | "neutral"> = {
+  active: "success",
+  beta: "warning",
+  deprecated: "neutral",
+};
+
+type ModelManagerPanelProps = {
   snapshot: ConfigurationSnapshot;
   /** 目标 Connection ID。 */
   connection: string;
-  /** 停用 Connection 仍可管理本地元数据；获取模型与加入 Route 仅在启用时可用。 */
+  /** 停用 Connection 仍可管理本地元数据；同步模型与加入 Route 仅在启用时可用。 */
   enabled: boolean;
   /** 测试 / 发现使用的 revision：内置连接用 runtime revision，自定义连接用 agent revision。 */
   discoveryRevision: string;
-  onClose: () => void;
 };
 
-/** Connection 模型管理器：发现、本地 metadata/目录合并展示、启停与加入 Route。
- * 模型与价格仅供参考：Advertised 为声明，Verified 能力未知，获取成功不等于真实调用成功。 */
-export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRevision, onClose }: ModelManagerDialogProps) {
+/** Connection 模型管理面板（Cherry Studio 风格，内联在供应商详情栏）：
+ * 发现（同步模型）、本地 metadata/目录合并展示、逐模型连通性检查、启停开关与加入 Route。
+ * 模型与价格仅供参考：Advertised 为声明，Verified 能力未知，同步成功不等于真实调用成功。 */
+export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevision }: ModelManagerPanelProps) {
   const queryClient = useQueryClient();
   const metadataQuery = useQuery({
     queryKey: ["provider-model-metadata", connection],
@@ -67,6 +83,10 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
   const metadata = metadataQuery.data ?? {};
   const rows = useMemo(() => mergeModels(discovery, metadata), [discovery, metadata]);
   const visibleRows = useMemo(() => filterModels(rows, search, statusFilter), [rows, search, statusFilter]);
+  const enabledCount = useMemo(
+    () => rows.filter((row) => row.metadata.enabled !== false).length,
+    [rows],
+  );
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["configuration"] });
@@ -153,64 +173,66 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
     });
   };
 
-  const closeEditor = () => setDraft(null);
+  const openEditor = (draftValue: ModelOverrideDraft) => {
+    setDraftRevision(metadataRevision);
+    setDraft(draftValue);
+  };
 
   return (
-    <FormDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={`${connection} · 管理模型`}
-      description="模型与价格仅供参考。Advertised 为声明；Verified 能力未知，获取模型成功不等于真实调用或能力验证。保存后重启生效。"
-      footer={
-        <p aria-live="polite" role={error ? "alert" : "status"} className={`m-0 text-xs font-semibold ${error ? "text-error" : "text-muted"}`}>
-          {error || status || (metadataQuery.isPending ? "正在读取本地模型与目录…" : "模型信息已加载")}
-        </p>
-      }
-    >
+    <section aria-label={`模型管理 ${connection}`} className="flex flex-col gap-3 border-t border-line-inner pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" disabled={!enabled || discoveryMutation.isPending} onClick={() => discoveryMutation.mutate()}>
-          {discoveryMutation.isPending ? "正在获取…" : "获取模型"}
-        </Button>
-        <Button variant="secondary" disabled={metadataQuery.isPending} onClick={() => void metadataQuery.refetch()}>
-          刷新模型信息
-        </Button>
-        <p role="status" className="m-0 text-xs text-muted">{discovery ? discoveryLabel(discovery) : "尚未获取模型（unknown）"}</p>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-48">
-          <Field label="搜索 model id / display name" id="model-manager-search">
-            {(props) => (
-              <Input
-                {...props}
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setVisibleLimit(50);
-                }}
-              />
-            )}
-          </Field>
+        <h4 className="m-0 text-sm font-bold">
+          模型
+          <span className="ml-2 font-mono text-xs font-normal text-muted">共 {rows.length} 个 · 启用 {enabledCount}</span>
+        </h4>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={!enabled || discoveryMutation.isPending} onClick={() => discoveryMutation.mutate()}>
+            {discoveryMutation.isPending ? "正在同步…" : "同步模型"}
+          </Button>
+          <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={metadataQuery.isPending} onClick={() => void metadataQuery.refetch()}>
+            刷新模型信息
+          </Button>
+          <Button className="px-2.5 py-1 text-xs" disabled={!editable || !metadataQuery.isSuccess} onClick={() => openEditor(emptyModelOverrideDraft())}>
+            + 添加模型
+          </Button>
         </div>
-        <Field label="模型状态筛选" id="model-manager-filter">
-          {(props) => (
-            <select
-              {...props}
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
-                setVisibleLimit(50);
-              }}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
-            >
-              {MODEL_FILTERS.map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          )}
-        </Field>
+      </div>
+      <p role="status" className="m-0 text-xs text-muted">
+        {error
+          ? error
+          : status
+            ? status
+            : discovery
+              ? discoveryLabel(discovery)
+              : metadataQuery.isPending
+                ? "正在读取本地模型与目录…"
+                : "模型信息已加载；尚未同步 Connection 模型列表（unknown）"}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="搜索模型 ID / 显示名称"
+          placeholder="搜索模型 ID / 显示名称…"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setVisibleLimit(50);
+          }}
+          className="min-w-0 flex-1 py-1.5 text-sm"
+        />
+        <select
+          aria-label="模型状态筛选"
+          value={statusFilter}
+          onChange={(event) => {
+            setStatusFilter(event.target.value);
+            setVisibleLimit(50);
+          }}
+          className="border border-line bg-input px-2 py-1.5 text-sm text-ink outline-none"
+        >
+          {MODEL_FILTERS.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
       </div>
 
       {metadataQuery.isError ? (
@@ -219,26 +241,22 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col divide-y divide-line-inner border border-line">
         {visibleRows.length === 0 && !metadataQuery.isPending ? (
-          <p className="m-0 text-sm text-muted">当前没有匹配的展示条目；Connection 获取状态见上方。</p>
-        ) : null}
-        {visibleRows.length > visibleLimit ? (
-          <p className="m-0 text-xs text-muted">当前显示 {visibleLimit} / {visibleRows.length} 条，可搜索缩小范围。</p>
+          <p className="m-0 px-3 py-6 text-sm text-muted">当前没有匹配的展示条目；可先「同步模型」或「添加模型」。</p>
         ) : null}
         {visibleRows.slice(0, visibleLimit).map((row) => (
           <ModelRow
             key={row.id}
             row={row}
+            connection={connection}
+            discoveryRevision={discoveryRevision}
             catalogSource={catalogSource}
             editable={editable}
             enabled={enabled}
             routes={modelRoutes}
             busy={overrideMutation.isPending || routeMutation.isPending}
-            onEdit={() => {
-              setDraftRevision(metadataRevision);
-              setDraft(draftFromOverride(row.id, row.override));
-            }}
+            onEdit={() => openEditor(draftFromOverride(row.id, row.override))}
             onToggleEnabled={() => {
               saveOverride(
                 { ...row.override, provider: metadata.provider, id: row.id, enabled: row.metadata.enabled === false },
@@ -249,9 +267,11 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
           />
         ))}
         {visibleRows.length > visibleLimit ? (
-          <Button variant="secondary" className="self-start" onClick={() => setVisibleLimit((limit) => limit + 50)}>
-            显示更多模型
-          </Button>
+          <div className="p-2">
+            <Button variant="secondary" onClick={() => setVisibleLimit((limit) => limit + 50)}>
+              显示更多模型（{visibleRows.length - visibleLimit}）
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -262,7 +282,7 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
           disabled={!editable || !metadataQuery.isSuccess}
           busy={overrideMutation.isPending}
           onChange={setDraft}
-          onCancel={closeEditor}
+          onCancel={() => setDraft(null)}
           onSave={() => {
             if (!metadataQuery.isSuccess) {
               setError("模型信息尚未加载成功");
@@ -271,19 +291,21 @@ export function ModelManagerDialog({ snapshot, connection, enabled, discoveryRev
             try {
               const model = buildModelOverride(draft);
               saveOverride({ ...model, provider: metadata.provider }, draftRevision);
-              closeEditor();
+              setDraft(null);
             } catch (cause) {
               setError(cause instanceof Error ? cause.message : "模型信息无效");
             }
           }}
         />
       ) : null}
-    </FormDialog>
+    </section>
   );
 }
 
 type ModelRowProps = {
   row: ReturnType<typeof mergeModels>[number];
+  connection: string;
+  discoveryRevision: string;
   catalogSource: Record<string, unknown>;
   editable: boolean;
   enabled: boolean;
@@ -294,31 +316,97 @@ type ModelRowProps = {
   onJoinRoute: (route: string) => void;
 };
 
-function ModelRow({ row, catalogSource, editable, enabled, routes, busy, onEdit, onToggleEnabled, onJoinRoute }: ModelRowProps) {
+function ModelRow({ row, connection, discoveryRevision, catalogSource, editable, enabled, routes, busy, onEdit, onToggleEnabled, onJoinRoute }: ModelRowProps) {
   const [selectedRoute, setSelectedRoute] = useState(routes[0] ?? "");
+  const [check, setCheck] = useState<CheckState>({ kind: "idle" });
   const status = typeof row.metadata.status === "string" ? row.metadata.status : "unknown";
   const displayName = typeof row.metadata.display_name === "string" ? row.metadata.display_name : "";
   const contextWindow = row.metadata.context_window ?? "unknown";
   const maxOutput = row.metadata.max_output_tokens ?? "unknown";
+  const capabilities = typeof row.metadata.capabilities === "object" && row.metadata.capabilities !== null
+    ? row.metadata.capabilities as Record<string, unknown>
+    : {};
+  const declared = CAPABILITY_KEYS.filter((key) => {
+    const claim = capabilities[key];
+    return typeof claim === "object" && claim !== null && (claim as Record<string, unknown>).advertised === true;
+  });
+  const enabledLocally = row.metadata.enabled !== false;
+
+  const checkMutation = useMutation({
+    mutationFn: () => testProviderConnection(connection, discoveryRevision, row.id),
+    onMutate: () => setCheck({ kind: "pending" }),
+    onSuccess: (diagnostic) => {
+      if (diagnostic.model_call === "success") {
+        setCheck({ kind: "ok", summary: `可用 · ${String(diagnostic.elapsed_ms ?? "?")} ms` });
+        return;
+      }
+      setCheck({
+        kind: "failed",
+        message: `模型调用未成功：${CHECK_LABELS[String(diagnostic.model_call)] ?? String(diagnostic.model_call)} · 网络 ${CHECK_LABELS[String(diagnostic.network)] ?? String(diagnostic.network)} · 认证 ${CHECK_LABELS[String(diagnostic.authentication)] ?? String(diagnostic.authentication)}`,
+      });
+    },
+    onError: (cause) => setCheck({ kind: "failed", message: cause instanceof Error ? cause.message : "连接测试失败" }),
+  });
+
   return (
-    <article className="border border-line bg-glass-muted p-3">
-      <h4 className="m-0 text-sm font-bold">{displayName || row.id}</h4>
-      <p className="m-0 mt-1 text-xs text-muted">模型 ID：{row.id}</p>
-      <p className="m-0 text-xs text-muted">
-        来源：{row.sources.join(" / ")} · {row.metadata.enabled === false ? "本地禁用" : "本地启用"} · Status：{status}
-      </p>
-      <p className="m-0 text-xs text-muted">Context window：{String(contextWindow)} · Max output：{String(maxOutput)}</p>
-      <details className="mt-1">
-        <summary className="cursor-pointer text-xs font-semibold">模型信息 / Advertised / Provenance</summary>
-        <ModelDetails metadata={row.metadata} catalogSource={catalogSource} />
-      </details>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={onEdit}>编辑模型信息</Button>
-        <Button variant="secondary" className="px-2.5 py-1 text-xs" disabled={busy || !editable} onClick={onToggleEnabled}>
-          {row.metadata.enabled === false ? "启用模型" : "禁用模型"}
-        </Button>
+    <article className="flex items-start gap-3 px-3 py-2.5">
+      <Switch
+        checked={enabledLocally}
+        disabled={busy || !editable}
+        aria-label={`${enabledLocally ? "禁用模型" : "启用模型"} ${row.id}`}
+        onChange={onToggleEnabled}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-mono text-sm font-bold break-all text-ink">{row.id}</span>
+          {displayName && displayName !== row.id ? <span className="text-xs text-muted">{displayName}</span> : null}
+          {status !== "unknown" ? (
+            <StatusBadge tone={STATUS_TONES[status] ?? "neutral"} label={status} className="px-1.5 py-0.5 font-mono text-[0.64rem]" />
+          ) : null}
+          {!enabledLocally ? (
+            <span className="border border-line bg-input px-1.5 py-0.5 text-[0.64rem] font-semibold text-warning">已禁用</span>
+          ) : null}
+          {declared.map((key) => (
+            <span
+              key={key}
+              title={`声明能力（Advertised）：${CAPABILITY_LABELS[key]}`}
+              className="border border-line bg-accent-soft px-1.5 py-0.5 text-[0.64rem] font-semibold text-accent-strong"
+            >
+              {CAPABILITY_LABELS[key]}
+            </span>
+          ))}
+          {row.sources.map((source) => (
+            <span key={source} className="border border-line px-1.5 py-0.5 font-mono text-[0.64rem] text-muted">
+              {SOURCE_BADGES[source] ?? source}
+            </span>
+          ))}
+        </div>
+        <p className="m-0 mt-1 text-[0.7rem] leading-relaxed text-muted">
+          <span>模型 ID：{row.id}</span>
+          <span> · Context：{String(contextWindow)} · Max output：{String(maxOutput)}</span>
+          {check.kind === "pending" ? <span> · 正在检查连通性…</span> : ""}
+          {check.kind === "ok" ? <span className="font-semibold text-success"> · ✓ {check.summary}</span> : ""}
+          {check.kind === "failed" ? <span className="font-semibold text-error"> · ✗ {check.message}</span> : ""}
+        </p>
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[0.7rem] font-semibold text-muted">模型信息 / Advertised / Provenance</summary>
+          <ModelDetails metadata={row.metadata} catalogSource={catalogSource} />
+        </details>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex gap-1.5">
+          <Button
+            variant="secondary"
+            className="px-2.5 py-1 text-xs"
+            disabled={!enabled || checkMutation.isPending}
+            onClick={() => checkMutation.mutate()}
+          >
+            {check.kind === "pending" ? "检查中…" : "检查"}
+          </Button>
+          <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={onEdit}>编辑</Button>
+        </div>
         {routes.length > 0 ? (
-          <>
+          <div className="flex gap-1.5">
             <select
               aria-label={`为 ${row.id} 选择 Route`}
               value={selectedRoute}
@@ -333,17 +421,24 @@ function ModelRow({ row, catalogSource, editable, enabled, routes, busy, onEdit,
               variant="secondary"
               className="px-2.5 py-1 text-xs"
               // 停用 Connection 或本地禁用的模型不允许进入候选链。
-              disabled={!enabled || row.metadata.enabled === false || !editable || routes.length === 0 || busy}
+              disabled={!enabled || !enabledLocally || !editable || routes.length === 0 || busy}
               onClick={() => onJoinRoute(selectedRoute)}
             >
               加入 Route
             </Button>
-          </>
+          </div>
         ) : null}
       </div>
     </article>
   );
 }
+
+/** 单条模型的连通性检查结果；不把诊断成功以外的状态伪装成可用。 */
+type CheckState =
+  | { kind: "idle" }
+  | { kind: "pending" }
+  | { kind: "ok"; summary: string }
+  | { kind: "failed"; message: string };
 
 function ModelDetails({ metadata, catalogSource }: { metadata: Record<string, unknown>; catalogSource: Record<string, unknown> }) {
   const recordOf = (value: unknown) => (typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {});
@@ -391,6 +486,8 @@ function ModelDetails({ metadata, catalogSource }: { metadata: Record<string, un
   );
 }
 
+const PROVENANCE_LABELS: Record<string, string> = { catalog: "目录", official_patch: "官方补丁", local_override: "本地覆盖" };
+
 const CATALOG_SOURCE_LABELS: Record<string, string> = {
   name: "数据源",
   source_url: "上游地址",
@@ -421,49 +518,107 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
     } as Partial<ModelOverrideDraft>);
   };
   return (
-    <details open className="border border-line bg-surface p-3">
-      <summary className="cursor-pointer text-sm font-bold">本地新增 / 编辑模型</summary>
+    <div className="border border-line bg-surface p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="m-0 text-sm font-bold">本地新增 / 编辑模型</p>
+        <Button variant="secondary" className="px-2 py-0.5 text-xs" onClick={onCancel}>收起表单</Button>
+      </div>
       <p className="m-0 mt-1 text-xs text-muted">留空或选择“继承”会使用目录信息。没有目录信息时保持未知。能力声明仅用于展示。</p>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="模型 ID" id="model-override-id" hint={draft.id ? "已有条目不可修改 ID" : undefined}>
-          {(props) => (
-            <Input {...props} value={draft.id} readOnly={Boolean(draft.id)} onChange={(event) => patch({ id: event.target.value })} />
-          )}
-        </Field>
-        <Field label="显示名称（留空继承）" id="model-override-display">
-          {(props) => <Input {...props} value={draft.display_name} onChange={(event) => patch({ display_name: event.target.value })} />}
-        </Field>
-        <Field label="上下文窗口（token，留空继承）" id="model-override-context">
-          {(props) => <Input {...props} type="number" min="0" value={draft.context_window} onChange={(event) => patch({ context_window: event.target.value })} />}
-        </Field>
-        <Field label="最大输出（token，留空继承）" id="model-override-output">
-          {(props) => <Input {...props} type="number" min="0" value={draft.max_output_tokens} onChange={(event) => patch({ max_output_tokens: event.target.value })} />}
-        </Field>
-        <Field label="模型状态" id="model-override-status">
-          {(props) => (
-            <select {...props} value={draft.status} onChange={(event) => patch({ status: event.target.value })} className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none">
-              <option value="">继承</option>
-              <option value="active">正式</option>
-              <option value="beta">测试版</option>
-              <option value="deprecated">已弃用</option>
-            </select>
-          )}
-        </Field>
-        <Field label="本地启用状态" id="model-override-enabled">
-          {(props) => (
-            <select {...props} value={draft.enabled} onChange={(event) => patch({ enabled: event.target.value })} className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none">
-              <option value="">继承（启用）</option>
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          )}
-        </Field>
-        <Field label="输入价格（美元 / 百万 token）" id="model-override-price-in">
-          {(props) => <Input {...props} type="number" min="0" step="any" value={draft.inputPrice} onChange={(event) => patch({ inputPrice: event.target.value })} />}
-        </Field>
-        <Field label="输出价格（美元 / 百万 token）" id="model-override-price-out">
-          {(props) => <Input {...props} type="number" min="0" step="any" value={draft.outputPrice} onChange={(event) => patch({ outputPrice: event.target.value })} />}
-        </Field>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          模型 ID
+          <input
+            aria-label="模型 ID"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.id}
+            readOnly={Boolean(draft.id)}
+            placeholder="例如 my-model-v2"
+            onChange={(event) => patch({ id: event.target.value })}
+          />
+          {draft.id ? <span className="text-[0.7rem] font-normal">已有条目不可修改 ID</span> : null}
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          显示名称（留空继承）
+          <input
+            aria-label="显示名称（留空继承）"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.display_name}
+            onChange={(event) => patch({ display_name: event.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          上下文窗口（token，留空继承）
+          <input
+            aria-label="上下文窗口（token，留空继承）"
+            type="number"
+            min={0}
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.context_window}
+            onChange={(event) => patch({ context_window: event.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          最大输出（token，留空继承）
+          <input
+            aria-label="最大输出（token，留空继承）"
+            type="number"
+            min={0}
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.max_output_tokens}
+            onChange={(event) => patch({ max_output_tokens: event.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          模型状态
+          <select
+            aria-label="模型状态"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.status}
+            onChange={(event) => patch({ status: event.target.value })}
+          >
+            <option value="">继承</option>
+            <option value="active">正式</option>
+            <option value="beta">测试版</option>
+            <option value="deprecated">已弃用</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          本地启用状态
+          <select
+            aria-label="本地启用状态"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.enabled}
+            onChange={(event) => patch({ enabled: event.target.value })}
+          >
+            <option value="">继承（启用）</option>
+            <option value="true">启用</option>
+            <option value="false">禁用</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          输入价格（美元 / 百万 token）
+          <input
+            aria-label="输入价格（美元 / 百万 token）"
+            type="number"
+            min={0}
+            step="any"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.inputPrice}
+            onChange={(event) => patch({ inputPrice: event.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          输出价格（美元 / 百万 token）
+          <input
+            aria-label="输出价格（美元 / 百万 token）"
+            type="number"
+            min={0}
+            step="any"
+            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            value={draft.outputPrice}
+            onChange={(event) => patch({ outputPrice: event.target.value })}
+          />
+        </label>
       </div>
       <fieldset className="mt-3 border border-line p-2">
         <legend className="px-1 text-xs font-bold">输入 / 输出模态</legend>
@@ -497,29 +652,27 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
       </fieldset>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
         {CAPABILITY_KEYS.map((key) => (
-          <Field key={key} label={`${CAPABILITY_LABELS[key]} · 声明能力`} id={`model-override-claim-${key}`}>
-            {(props) => (
-              <select
-                {...props}
-                value={draft.claims[key]}
-                onChange={(event) => patch({ claims: { ...draft.claims, [key]: event.target.value } })}
-                className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
-              >
-                <option value="">继承</option>
-                <option value="true">声明支持</option>
-                <option value="false">未声明支持</option>
-              </select>
-            )}
-          </Field>
+          <label key={key} className="flex flex-col gap-1 text-xs font-semibold text-muted">
+            {`${CAPABILITY_LABELS[key]} · 声明能力`}
+            <select
+              aria-label={`${CAPABILITY_LABELS[key]} · 声明能力`}
+              className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+              value={draft.claims[key]}
+              onChange={(event) => patch({ claims: { ...draft.claims, [key]: event.target.value } })}
+            >
+              <option value="">继承</option>
+              <option value="true">声明支持</option>
+              <option value="false">未声明支持</option>
+            </select>
+          </label>
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button disabled={disabled || busy} onClick={onSave}>{busy ? "保存中…" : "保存本地模型"}</Button>
         <Button variant="secondary" disabled={disabled || busy} onClick={() => onChange(emptyModelOverrideDraft())}>新增另一模型</Button>
-        <Button variant="secondary" onClick={onCancel}>收起表单</Button>
         <span className="text-xs text-muted">基于 revision {revision} 提交（CAS）</span>
       </div>
-    </details>
+    </div>
   );
 }
 

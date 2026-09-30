@@ -123,12 +123,20 @@ function renderConnections(snapshot: ConfigurationSnapshot) {
           publicDraft={{}}
           onDraftChange={() => undefined}
           onResult={onResult}
+          secretFields={[]}
+          secretDraft={{}}
+          onSecretDraftChange={() => undefined}
+          onRequestSecretClear={() => undefined}
         />
       </QueryClientProvider>
     </JotaiProvider>,
   );
-  const customCard = () => screen.getByRole("region", { name: "自定义连接 MyProxy" });
-  return { queryClient, onResult, customCard };
+  const providerList = () => screen.getByRole("complementary", { name: "服务商列表" });
+  const selectProvider = async (id: string) => {
+    await userEvent.click(within(providerList()).getByRole("button", { name: new RegExp(id) }));
+  };
+  const customCard = () => screen.getByRole("region", { name: "供应商详情 MyProxy" });
+  return { queryClient, onResult, providerList, selectProvider, customCard };
 }
 
 function persistenceDump(queryClient: QueryClient): string {
@@ -141,6 +149,8 @@ beforeEach(() => {
   localStorage.clear();
   mockedUpdateAgent.mockResolvedValue({ revision: "runtime-r" } as never);
   mockedUpdateCredential.mockResolvedValue({ revision: "runtime-r" } as never);
+  // 模型管理面板内联在详情栏：默认给一条空 metadata，避免无关用例渲染查询错误告警。
+  mockedFetchMetadata.mockResolvedValue({ revision: "models-r0", provider: "", models: [], overrides: [], catalog_source: {} });
   mockedTestConnection.mockResolvedValue({
     network: "success",
     authentication: "success",
@@ -159,6 +169,8 @@ afterEach(() => {
 describe("ProviderConnections 自定义连接", () => {
   it("历史 MyProxy 卡片按原始 ID 展示与保存，ID 不可修改", async () => {
     const view = renderConnections(snapshotFixture({}));
+    // 主从布局：默认选中第一个服务商（内置 OpenAI），需在左侧列表选择 MyProxy。
+    await view.selectProvider("MyProxy");
     const card = view.customCard();
     const identity = within(card).getByLabelText("Connection ID");
     expect(identity).toHaveValue("MyProxy");
@@ -217,8 +229,9 @@ describe("ProviderConnections 自定义连接", () => {
       credentials: { MyProxy: { configured: true, editable: true, revision: "secret-a", pending_restart: true } },
     });
     const view = renderConnections(snapshot);
+    await view.selectProvider("MyProxy");
     const card = view.customCard();
-    const keyInput = within(card).getByLabelText("新增 / 替换 API Key");
+    const keyInput = within(card).getByLabelText("API 密钥（Credential）");
     expect(keyInput).toHaveAttribute("type", "password");
     expect(keyInput).toHaveValue("");
 
@@ -227,12 +240,12 @@ describe("ProviderConnections 自定义连接", () => {
     await userEvent.click(within(card).getByRole("button", { name: "保存 API Key" }));
     await waitFor(() => expect(mockedUpdateCredential).toHaveBeenCalledWith("MyProxy", "agent-a", "secret-a", secret));
     // 保存成功后立即清空输入；明文不出现在查询缓存、localStorage 或页面。
-    await waitFor(() => expect(within(card).getByLabelText("新增 / 替换 API Key")).toHaveValue(""));
+    await waitFor(() => expect(within(card).getByLabelText("API 密钥（Credential）")).toHaveValue(""));
     expect(persistenceDump(view.queryClient)).not.toContain(secret);
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
 
     await userEvent.click(within(card).getByRole("button", { name: "清除 API Key" }));
-    expect(await screen.findByText(/确定清除此 Credential/)).toBeInTheDocument();
+    expect(await screen.findByText(/确认清除/)).toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "清除" }));
     await waitFor(() => expect(mockedUpdateCredential).toHaveBeenLastCalledWith("MyProxy", "agent-a", "secret-a", null));
     expect(persistenceDump(view.queryClient)).not.toContain(secret);
@@ -240,6 +253,7 @@ describe("ProviderConnections 自定义连接", () => {
 
   it("连接测试调用真实诊断接口并展示分类结果", async () => {
     const view = renderConnections(snapshotFixture({}));
+    await view.selectProvider("MyProxy");
     const card = view.customCard();
     await userEvent.type(within(card).getByLabelText("测试模型 ID（将产生一次最小真实调用）"), "gpt-test");
     mockedTestConnection.mockResolvedValueOnce({
@@ -260,6 +274,7 @@ describe("ProviderConnections 自定义连接", () => {
 
   it("删除供应商需确认；服务端拒绝（仍被路线引用）时原样展示错误，不伪造成功", async () => {
     const view = renderConnections(snapshotFixture({}));
+    await view.selectProvider("MyProxy");
     const card = view.customCard();
     mockedUpdateAgent.mockRejectedValueOnce(
       new ConsoleApiError("模型路线 主链 仍引用 Connection MyProxy，请先调整路线", "config_invalid", 400),
@@ -274,6 +289,7 @@ describe("ProviderConnections 自定义连接", () => {
 
   it("revision 冲突时不覆盖服务器新版本，保留本地输入并提示比较", async () => {
     const view = renderConnections(snapshotFixture({}));
+    await view.selectProvider("MyProxy");
     const card = view.customCard();
     mockedUpdateAgent.mockRejectedValueOnce(new ConsoleApiError("配置已被其他操作修改", "config_conflict", 409));
     await userEvent.click(within(card).getByRole("button", { name: "保存连接" }));
@@ -284,15 +300,16 @@ describe("ProviderConnections 自定义连接", () => {
 });
 
 describe("ProviderConnections 内置连接", () => {
-  it("内置卡片承载 provider.* 公开字段并提供模型管理入口", () => {
+  it("内置卡片承载 provider.* 公开字段并内联模型管理面板", () => {
     renderConnections(snapshotFixture({}));
-    const card = screen.getByRole("region", { name: "内置连接 openai" });
-    expect(within(card).getByLabelText("OpenAI Base URL")).toHaveValue("https://api.openai.example/v1");
-    expect(within(card).getByRole("button", { name: "管理模型" })).toBeInTheDocument();
+    // 主从布局默认选中第一个服务商（内置 OpenAI）。
+    const pane = screen.getByRole("region", { name: "供应商详情 openai" });
+    expect(within(pane).getByLabelText("OpenAI Base URL")).toHaveValue("https://api.openai.example/v1");
+    expect(within(pane).getByRole("region", { name: "模型管理 openai" })).toBeInTheDocument();
   });
 });
 
-describe("模型管理对话框", () => {
+describe("模型管理面板", () => {
   const metadata = {
     revision: "models-r1",
     provider: "myproxy",
@@ -306,7 +323,7 @@ describe("模型管理对话框", () => {
   async function openManager() {
     const view = renderConnections(snapshotFixture({}));
     mockedFetchMetadata.mockResolvedValue(metadata);
-    await userEvent.click(within(view.customCard()).getByRole("button", { name: "管理模型" }));
+    await view.selectProvider("MyProxy");
     return view;
   }
 
@@ -314,10 +331,13 @@ describe("模型管理对话框", () => {
     await openManager();
     const knownRow = () => screen.getByText("模型 ID：known").closest("article")!;
     expect(await screen.findByText("模型 ID：known")).toBeInTheDocument();
-    expect(within(knownRow()).getByText(/来源：local override · 本地禁用 · Status：beta/)).toBeInTheDocument();
+    // 徽标化展示：来源（本地覆盖）、本地禁用状态与目录 status 互不混淆。
+    expect(within(knownRow()).getByText("本地覆盖")).toBeInTheDocument();
+    expect(within(knownRow()).getByText("已禁用")).toBeInTheDocument();
+    expect(within(knownRow()).getByText("beta")).toBeInTheDocument();
 
     mockedDiscover.mockResolvedValueOnce({ state: "success", models: [{ id: "private/unknown" }], category: "ok", http_status: 200, elapsed_ms: 10 });
-    await userEvent.click(screen.getByRole("button", { name: "获取模型" }));
+    await userEvent.click(screen.getByRole("button", { name: "同步模型" }));
     expect(mockedDiscover).toHaveBeenCalledWith("MyProxy", "agent-a");
     expect(await screen.findByText("模型 ID：private/unknown")).toBeInTheDocument();
     // 控制行与 footer 状态都会展示获取结果文案
@@ -329,7 +349,7 @@ describe("模型管理对话框", () => {
     await openManager();
     await screen.findByText("模型 ID：known");
     mockedUpdateOverride.mockResolvedValueOnce({ revision: "runtime-r" } as never);
-    await userEvent.click(screen.getByRole("button", { name: "启用模型" }));
+    await userEvent.click(screen.getByRole("switch", { name: "启用模型 known" }));
     await waitFor(() => expect(mockedUpdateOverride).toHaveBeenCalledWith("MyProxy", "models-r1", {
       provider: "myproxy",
       id: "known",
@@ -340,7 +360,7 @@ describe("模型管理对话框", () => {
   it("模型加入既有 Route 时构造 provider:model 候选并提交 set_model_route", async () => {
     await openManager();
     mockedDiscover.mockResolvedValueOnce({ state: "success", models: [{ id: "private/unknown" }], category: "ok", http_status: 200, elapsed_ms: 10 });
-    await userEvent.click(screen.getByRole("button", { name: "获取模型" }));
+    await userEvent.click(screen.getByRole("button", { name: "同步模型" }));
     const row = await screen.findByText("模型 ID：private/unknown").then((element) => element.closest("article")!);
     await userEvent.selectOptions(within(row).getByLabelText("为 private/unknown 选择 Route"), "主链");
     mockedUpdateAgent.mockResolvedValueOnce({ revision: "runtime-r" } as never);
@@ -355,7 +375,7 @@ describe("模型管理对话框", () => {
     await openManager();
     await screen.findByText("模型 ID：known");
     mockedUpdateOverride.mockRejectedValueOnce(new ConsoleApiError("model conflict", "config_conflict", 409));
-    await userEvent.click(screen.getByRole("button", { name: "启用模型" }));
+    await userEvent.click(screen.getByRole("switch", { name: "启用模型 known" }));
     expect(await screen.findByText(/未覆盖服务器版本/)).toBeInTheDocument();
   });
 });
