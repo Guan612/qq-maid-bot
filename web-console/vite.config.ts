@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vitest/config";
+import { consoleMockApi } from "./mock/index.js";
 
 const root = path.resolve(import.meta.dirname, ".");
 
@@ -43,6 +44,8 @@ export default defineConfig({
       routesDirectory: "./src/routes",
       generatedRouteTree: "./src/routeTree.gen.ts",
     }),
+    // dev-only mock API：无需启动 Rust 后端即可预览控制台；MOCK_API=off 时关闭。
+    ...(process.env.MOCK_API === "off" ? [] : [consoleMockApi()]),
     copyBackgroundAssets(),
   ],
   build: {
