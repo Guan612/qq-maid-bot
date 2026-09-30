@@ -45,7 +45,7 @@ export function Input({ className, ...props }: InputProps) {
   return (
     <input
       className={cn(
-        "border border-line bg-input px-3 py-2.5 text-ink outline-none placeholder:text-muted",
+        "rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none placeholder:text-muted",
         "focus-visible:border-accent",
         props["aria-invalid"] && "border-error",
         className,

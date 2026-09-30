@@ -34,7 +34,7 @@ export function ConfirmDialog({
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[color-mix(in_srgb,var(--console-background)_78%,transparent)] animate-fade-in" />
-        <DialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 border border-line bg-surface p-6 shadow-console animate-page-in">
+        <DialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 w-[min(26rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 rounded-console-lg border border-line bg-surface p-6 shadow-console animate-page-in">
           <DialogPrimitive.Title className="m-0 text-lg font-bold">{title}</DialogPrimitive.Title>
           {description ? (
             <DialogPrimitive.Description className="mt-2 text-sm leading-relaxed text-muted">

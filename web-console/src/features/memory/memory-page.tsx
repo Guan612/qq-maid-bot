@@ -219,7 +219,7 @@ export function MemoryPage() {
         meta={<span className="border border-line bg-accent-soft px-2 py-1 font-mono text-[0.64rem] font-bold tracking-wide text-accent-strong">受控写入</span>}
       />
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
+      <div className="mt-4 flex flex-wrap items-end gap-3 [&>*]:min-w-0">
         <FilterSelect label="范围" value={filters.scope} onChange={(value) => setFilters({ ...filters, scope: value as Filters["scope"] })}
           options={[["all", "全部范围"], ["personal", "个人记忆"], ["group_profile", "群内用户画像"], ["group", "群组记忆"]]} />
         <FilterSelect label="状态" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value as Filters["status"] })}
@@ -283,7 +283,7 @@ export function MemoryPage() {
         </div>
       ) : null}
 
-      <section aria-label="授权范围操作" className="mt-6 border border-line bg-glass-muted p-4">
+      <section aria-label="授权范围操作" className="mt-6 rounded-console-lg border border-line bg-glass-muted p-4">
         <p className="console-mono-tag m-0 mb-2">SCOPES / RANGE OPERATIONS</p>
         {targets.length === 0 ? (
           <p className="m-0 text-sm text-muted">
@@ -406,7 +406,7 @@ function FilterSelect({ label, value, onChange, options }: {
   return (
     <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
       {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="border border-line bg-input px-2 py-2 text-sm text-ink outline-none">
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-console border border-line bg-input px-2 py-2 text-sm text-ink outline-none">
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>{optionLabel}</option>
         ))}

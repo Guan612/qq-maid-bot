@@ -56,7 +56,7 @@ export function AppShell() {
       <header className="relative z-40 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-glass px-4 py-2.5">
         <div className="min-w-0">
           <p className="console-mono-tag m-0">QQ MAID BOT · LOCAL OPS</p>
-          <p className="m-0 text-xs leading-relaxed text-muted">
+          <p className="m-0 hidden text-xs leading-relaxed text-muted sm:block">
             默认同源并受部署管理员会话与 CSRF 保护；公网访问仍必须使用受信 TLS 反向代理。
           </p>
         </div>
@@ -69,7 +69,7 @@ export function AppShell() {
 
       <nav
         aria-label="控制台页面"
-        className="fixed bottom-4 left-1/2 z-50 w-[min(410px,calc(100vw-2rem))] -translate-x-1/2 border border-line bg-glass-raised p-1.5 shadow-console"
+        className="fixed bottom-3 left-1/2 z-50 w-[min(430px,calc(100vw-1.5rem))] -translate-x-1/2 rounded-console-lg border border-line bg-glass-raised p-1.5 shadow-console backdrop-blur"
       >
         <NavList navigateTo={navigateTo} />
       </nav>
@@ -99,7 +99,7 @@ function NavList({ navigateTo }: { navigateTo: (to: string) => Promise<void> }) 
                 void navigateTo(page.to);
               }}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-1 py-2 text-[0.68rem] font-bold no-underline transition-colors",
+                "flex flex-col items-center gap-0.5 rounded-console px-0.5 py-2 text-[0.66rem] font-bold no-underline transition-colors sm:px-1 sm:text-[0.68rem]",
                 active ? "bg-accent-soft text-accent" : "text-muted hover:bg-accent-soft hover:text-ink",
               )}
             >

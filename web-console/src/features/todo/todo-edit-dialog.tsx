@@ -142,7 +142,7 @@ export function TodoEditDialog({ todoId, onClose }: TodoEditDialogProps) {
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(event) => field.handleChange(event.target.value)}
-                    className="border border-line bg-input px-3 py-2.5 text-ink outline-none"
+                    className="rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none"
                   />
                 )}
               </Field>

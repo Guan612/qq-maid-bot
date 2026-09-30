@@ -19,7 +19,7 @@ export function Button({ variant = "primary", className, type = "button", ...pro
     <button
       type={type}
       className={cn(
-        "cursor-pointer border border-line px-4 py-2.5 font-bold transition-colors duration-200",
+        "cursor-pointer rounded-console border border-line px-4 py-2.5 font-bold transition-colors duration-200",
         "active:translate-y-px disabled:cursor-progress disabled:opacity-55",
         VARIANT_CLASSES[variant],
         className,

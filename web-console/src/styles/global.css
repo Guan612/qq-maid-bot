@@ -2,28 +2,28 @@
 
 /*
  * 语义主题 token（DESIGN.md §2）。
- * :root 提供与 Console Dark 一致的默认值，保证脚本加载前不闪回浅色画布；
+ * :root 提供与「暮蔷薇」一致的默认值，保证脚本加载前不闪回旧画布；
  * theme.ts 运行时通过 setProperty 覆盖同名变量完成主题切换，
  * 因此这里的 @theme inline 只做引用注册，不拥有颜色值。
  */
 :root {
   color-scheme: var(--console-color-scheme);
   --console-color-scheme: dark;
-  --console-background: #0d1117;
-  --console-surface: #161b22;
-  --console-surface-secondary: #1b2028;
-  --console-card: #21262d;
-  --console-input: #0d1117;
-  --console-border: #30363d;
-  --console-text-primary: #e6edf3;
-  --console-text-secondary: #8b949e;
-  --console-accent: #3fb950;
-  --console-accent-hover: #56d364;
-  --console-accent-contrast: #0d1117;
-  --console-success: #3fb950;
-  --console-warning: #d29922;
-  --console-error: #f85149;
-  --console-error-contrast: #ffffff;
+  --console-background: #161022;
+  --console-surface: #1f1830;
+  --console-surface-secondary: #261d3b;
+  --console-card: #2d2344;
+  --console-input: #120d1d;
+  --console-border: #3b2f55;
+  --console-text-primary: #f2ece1;
+  --console-text-secondary: #ab9dbf;
+  --console-accent: #e8a3b9;
+  --console-accent-hover: #f3bcce;
+  --console-accent-contrast: #251226;
+  --console-success: #82d996;
+  --console-warning: #e6b966;
+  --console-error: #f2837c;
+  --console-error-contrast: #2b0f0d;
 
   /* 派生 token：组件状态只从语义色推导，不拥有独立主题色。 */
   --console-glass: color-mix(in srgb, var(--console-surface) 94%, transparent);
@@ -31,10 +31,17 @@
   --console-glass-muted: color-mix(in srgb, var(--console-surface-secondary) 92%, transparent);
   --console-line-inner: color-mix(in srgb, var(--console-border) 48%, transparent);
   --console-accent-soft: color-mix(in srgb, var(--console-accent) 14%, var(--console-surface));
+  --console-success-soft: color-mix(in srgb, var(--console-success) 14%, var(--console-surface));
+  --console-warning-soft: color-mix(in srgb, var(--console-warning) 14%, var(--console-surface));
+  --console-error-soft: color-mix(in srgb, var(--console-error) 14%, var(--console-surface));
   --console-focus: color-mix(in srgb, var(--console-accent) 42%, transparent);
-  --console-shadow: 0 16px 40px rgb(0 0 0 / 28%);
+  --console-shadow: 0 24px 48px -16px rgb(12 6 24 / 55%), 0 2px 8px rgb(12 6 24 / 30%);
   --console-z-top: 40;
   --console-z-bottom: 50;
+
+  /* 框体几何：面板大圆角 + 控件小圆角，替代旧版全局 0 圆角。 */
+  --console-radius: 10px;
+  --console-radius-lg: 16px;
 }
 
 /* 把语义 token 注册为 Tailwind 颜色 token：
@@ -61,10 +68,18 @@
   --color-warning: var(--console-warning);
   --color-error: var(--console-error);
   --color-error-contrast: var(--console-error-contrast);
+  --color-success-soft: var(--console-success-soft);
+  --color-warning-soft: var(--console-warning-soft);
+  --color-error-soft: var(--console-error-soft);
   --color-focus-ring: var(--console-focus);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* 标题衬线：中文走宋体族（Noto/思源宋体优先），给页面标题「值班手记」的编辑感。 */
+  --font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", ui-serif, Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-console: var(--console-radius);
+  --radius-console-lg: var(--console-radius-lg);
 
   --shadow-console: var(--console-shadow);
 
@@ -72,14 +87,8 @@
   --animate-fade-in: fade-in 0.18s ease-out both;
 }
 
-/* 设计系统：0 圆角的方形双线框体语言，第三方注入的圆角一律压平。 */
+/* 设计系统：暖夜蔷薇主题。圆角由 token 提供，控件 10px、面板 16px。 */
 @layer base {
-  *,
-  ::before,
-  ::after {
-    border-radius: 0;
-  }
-
   html {
     scroll-behavior: smooth;
   }
@@ -92,11 +101,27 @@
     font-family: var(--font-sans);
   }
 
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: 0.015em;
+  }
+
   button,
   input,
   select,
   textarea {
     font: inherit;
+  }
+
+  /* 移动端防护：select/textarea 的固有宽度（最长 option）不允许撑破容器，
+     否则整页出现横向平移，fixed 弹层也会随布局视口跑偏。 */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
   }
 
   [hidden] {
@@ -134,28 +159,20 @@
   }
 }
 
-/* 方形双线框体：外部 1px 线、1px 空隙、内部 1px 线（DESIGN.md §7）。 */
+/* 框体语言：单 1px 发丝线 + 大圆角 + 暖夜投影；背景透出 glass 层。 */
 @utility console-frame {
-  position: relative;
   border: 1px solid var(--console-border);
+  border-radius: var(--console-radius-lg);
   background: var(--console-glass);
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 2px;
-    border: 1px solid var(--console-line-inner);
-    pointer-events: none;
-  }
 }
 
-/* 等宽小标签（eyebrow / kicker / badge 共用）。 */
+/* 小节标签（eyebrow / kicker）：安静的字距标签，主色只留给可交互元素。 */
 @utility console-mono-tag {
-  color: var(--console-accent);
-  font-family: var(--font-mono);
+  color: var(--console-text-secondary);
+  font-family: var(--font-sans);
   font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 

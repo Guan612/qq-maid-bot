@@ -39,7 +39,7 @@ export function PublicFieldRow({ field, value, onChange, onRemove, busy = false 
               disabled={!field.editable}
               value={current === "" ? "disabled" : current}
               onChange={(event) => onChange(event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               {ttsProviderOptions(field.savedValue ?? field.effectiveValue).map(([optionValue, label]) => (
                 <option key={optionValue} value={optionValue}>{label}</option>
@@ -51,7 +51,7 @@ export function PublicFieldRow({ field, value, onChange, onRemove, busy = false 
               disabled={!field.editable}
               value={current === "true" ? "true" : "false"}
               onChange={(event) => onChange(event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               <option value="true">启用</option>
               <option value="false">关闭</option>

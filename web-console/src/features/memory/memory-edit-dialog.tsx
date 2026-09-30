@@ -97,7 +97,7 @@ export function MemoryEditDialog({ item, onClose }: Props) {
                 rows={5}
                 value={form.state.values.content}
                 onChange={(event) => form.setFieldValue("content", event.target.value)}
-                className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+                className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
               />
             )}
           </Field>

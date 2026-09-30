@@ -24,7 +24,7 @@ export function ConsoleToastHost() {
         onClick={() => setToast(null)}
         role="status"
         className={cn(
-          "fixed bottom-24 left-1/2 z-50 -translate-x-1/2 cursor-pointer border bg-surface px-4 py-3 text-sm font-semibold shadow-console",
+          "fixed bottom-24 left-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 cursor-pointer rounded-console-lg border bg-surface px-4 py-3 text-sm font-semibold shadow-console",
           KIND_CLASSES[toast?.kind ?? "info"],
         )}
       >

@@ -122,7 +122,7 @@ export function ThemePreferencesSection() {
             value={customColors}
             placeholder="#0D1117, #E6EDF3, #3FB950"
             onChange={(event) => setCustomColors(event.target.value)}
-            className="max-w-96 flex-1 border border-line bg-input px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus-visible:border-accent"
+            className="max-w-96 flex-1 rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus-visible:border-accent"
           />
           <Button variant="secondary" disabled={saveInFlight} onClick={saveCustomColors} className="px-2.5 py-1 text-xs">
             保存颜色

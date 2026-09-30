@@ -74,7 +74,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
   return (
     <form
       aria-label="创建 Memory"
-      className="mt-6 flex flex-col gap-3 border border-line bg-glass-muted p-4"
+      className="mt-6 flex flex-col gap-3 rounded-console-lg border border-line bg-glass-muted p-4"
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -82,7 +82,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
       }}
     >
       <p className="console-mono-tag m-0">CREATE / CONTROLLED WRITE</p>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="已授权范围" id="memory-create-target" hint={targetsLoading ? "加载范围中…" : undefined}>
           {(props) => (
             <select
@@ -90,7 +90,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
               disabled={disabled || creatableTargets.length === 0}
               value={form.state.values.targetRef}
               onChange={(event) => form.setFieldValue("targetRef", event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               <option value="">
                 {targetsLoading && targets.length === 0
@@ -114,7 +114,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
               disabled={disabled}
               value={form.state.values.category}
               onChange={(event) => form.setFieldValue("category", event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -129,7 +129,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
               disabled={disabled || visibilityChoices.length === 0}
               value={form.state.values.visibility}
               onChange={(event) => form.setFieldValue("visibility", event.target.value)}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               <option value="">{visibilityChoices.length === 0 ? "先选择范围" : "选择可见性"}</option>
               {visibilityChoices.map(([value, label]) => (
@@ -157,7 +157,7 @@ export function MemoryCreateForm({ targets, targetsLoading, disabled }: Props) {
             disabled={disabled}
             value={form.state.values.content}
             onChange={(event) => form.setFieldValue("content", event.target.value)}
-            className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
           />
         )}
       </Field>

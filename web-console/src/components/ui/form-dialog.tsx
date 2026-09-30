@@ -21,7 +21,7 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
     <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-[color-mix(in_srgb,var(--console-background)_78%,transparent)] animate-fade-in" />
-        <DialogPrimitive.Content className={`fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 flex-col overflow-auto border border-line bg-surface p-6 shadow-console animate-page-in ${wide ? "w-[min(58rem,calc(100vw-2rem))]" : "w-[min(34rem,calc(100vw-2rem))]"}`}>
+        <DialogPrimitive.Content className={`fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 flex-col overflow-auto rounded-console-lg border border-line bg-surface p-5 shadow-console animate-page-in sm:p-6 ${wide ? "w-[min(58rem,calc(100vw-1.5rem))]" : "w-[min(34rem,calc(100vw-1.5rem))]"}`}>
           <DialogPrimitive.Title className="m-0 text-lg font-bold">{title}</DialogPrimitive.Title>
           {description ? (
             <DialogPrimitive.Description className="mt-1 text-sm leading-relaxed text-muted">

@@ -182,7 +182,7 @@ export function KnowledgePage() {
         <select
           value={statusInput}
           onChange={(event) => setStatusInput(event.target.value as StatusFilter)}
-          className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+          className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
         >
           <option value="all">全部状态</option>
           <option value="pending">等待处理</option>

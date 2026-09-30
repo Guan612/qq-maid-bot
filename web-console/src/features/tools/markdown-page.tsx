@@ -41,7 +41,7 @@ export function MarkdownPage() {
         lede="编辑器只提交当前文本；预览内容由后端解析并清理后再显示，不在浏览器端复制 sanitization 逻辑。"
         meta={<span className="font-mono text-[0.66rem] tracking-widest text-muted uppercase">Ctrl / ⌘ + Enter</span>}
       />
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="console-frame flex flex-col p-3">
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="markdown-input" className="text-sm font-semibold text-ink">Markdown 输入</label>

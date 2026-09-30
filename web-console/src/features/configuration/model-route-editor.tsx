@@ -177,7 +177,7 @@ export function ModelRouteEditor({ label, candidates, disabled, onChange }: Mode
           type="button"
           disabled={disabled}
           onClick={tryAdd}
-          className="border border-line bg-glass px-3 py-1.5 text-xs font-bold text-ink transition-colors hover:bg-accent-soft disabled:opacity-50"
+          className="rounded-console border border-line bg-glass px-3 py-1.5 text-xs font-bold text-ink transition-colors hover:bg-accent-soft disabled:opacity-50"
         >
           添加
         </button>

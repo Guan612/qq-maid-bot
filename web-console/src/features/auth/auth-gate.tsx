@@ -52,7 +52,7 @@ export function AuthGate() {
   return (
     <div className="relative z-1 grid min-h-dvh place-items-center bg-canvas p-4">
       <form
-        className="w-full max-w-[30rem] border border-line bg-surface p-8 shadow-console animate-page-in sm:p-12"
+        className="w-full max-w-[30rem] rounded-console-lg border border-line bg-surface p-6 shadow-console animate-page-in sm:p-12"
         onSubmit={(event) => {
           event.preventDefault();
           event.stopPropagation();

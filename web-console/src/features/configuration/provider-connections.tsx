@@ -106,8 +106,11 @@ export function ProviderConnections({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-0 border border-line lg:grid-cols-[15rem_1fr]">
-        <aside aria-label="服务商列表" className="flex min-h-64 flex-col gap-2 border-b border-line bg-glass-muted p-3 lg:border-b-0 lg:border-r">
+      <div className="grid grid-cols-1 gap-0 rounded-console-lg border border-line lg:grid-cols-[15rem_1fr]">
+        <aside
+          aria-label="服务商列表"
+          className="flex flex-col gap-2 rounded-t-console-lg border-b border-line bg-glass-muted p-3 lg:rounded-t-none lg:rounded-l-console-lg lg:min-h-64 lg:border-b-0 lg:border-r"
+        >
           <Input
             aria-label="搜索供应商"
             placeholder="搜索供应商…"
@@ -115,18 +118,18 @@ export function ProviderConnections({
             onChange={(event) => setSearch(event.target.value)}
             className="py-1.5 text-sm"
           />
-          <ul className="m-0 flex list-none flex-1 flex-col gap-0.5 overflow-y-auto p-0">
+          <ul className="m-0 flex list-none flex-row gap-1.5 overflow-x-auto p-0 pb-1 lg:flex-1 lg:flex-col lg:gap-0.5 lg:overflow-y-auto lg:pb-0">
             {entries.map((entry) => {
               const providerEnabled = providerEnabledOf(entry, snapshot, fields, publicDraft, saved);
               const connected = providerConnectedOf(entry, snapshot, fields, credentials);
               const isSelected = entry.id === selectedId;
               return (
-                <li key={`${entry.kind}:${entry.id}`}>
+                <li key={`${entry.kind}:${entry.id}`} className="shrink-0 lg:w-full">
                   <button
                     type="button"
                     onClick={() => setSelected(entry.id)}
                     aria-current={isSelected ? "true" : undefined}
-                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-console px-2.5 py-1.5 text-left text-sm whitespace-nowrap transition-colors lg:whitespace-normal ${
                       isSelected ? "bg-accent-soft text-ink" : "text-ink hover:bg-accent-soft"
                     }`}
                   >
@@ -292,7 +295,7 @@ function BuiltinProviderPane({
               : "尚未配置，输入后通过底部「保存密钥变更」提交"}
           >
             {(props) => (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Input
                   {...props}
                   type="password"
@@ -455,7 +458,7 @@ function CustomProviderPane({ snapshot, id, saved, preset, credential, presets, 
       <div className="flex flex-col gap-1">
         <Field label="API 密钥（Credential）" id={`connection-${id}-credential`} hint={credential?.configured ? "已配置；保存后原文不会再次显示" : "尚未配置"}>
           {(props) => (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Input {...props} type="password" autoComplete="new-password" value={keyDraft} disabled={!credentialEditable} onChange={(event) => setKeyDraft(event.target.value)} className="flex-1" />
               <Button disabled={!credentialEditable || keyDraft.length === 0 || credentialChange.isPending} onClick={() => credentialChange.mutate({ value: keyDraft })} className="px-2.5 py-1 text-xs">
                 保存 API Key
@@ -491,7 +494,7 @@ function CustomProviderPane({ snapshot, id, saved, preset, credential, presets, 
                 {...props}
                 value={values.kind}
                 onChange={(event) => setValues({ ...values, kind: event.target.value })}
-                className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+                className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
               >
                 {(snapshot.providers?.adapters ?? []).map((adapter) => (
                   <option key={adapter} value={adapter}>{adapter}</option>
@@ -624,7 +627,7 @@ function CreateConnectionDialog({ snapshot, presets, saved, onClose, onResult }:
             {...props}
             value={presetId}
             onChange={(event) => applyPreset(event.target.value)}
-            className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
           >
             <option value="">自定义连接</option>
             {presets.map((preset) => (
@@ -645,7 +648,7 @@ function CreateConnectionDialog({ snapshot, presets, saved, onClose, onResult }:
             {...props}
             value={values.kind}
             onChange={(event) => setValues({ ...values, kind: event.target.value })}
-            className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
           >
             {(snapshot.providers?.adapters ?? []).map((adapter) => (
               <option key={adapter} value={adapter}>{adapter}</option>

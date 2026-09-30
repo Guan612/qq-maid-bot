@@ -146,13 +146,13 @@ export function TodoPage() {
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="mt-3 flex flex-wrap items-end gap-3 [&>*]:min-w-0">
           <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
             状态
             <select
               value={filters.status}
               onChange={(event) => setFilters({ ...filters, status: event.target.value as TodoFilters["status"] })}
-              className="border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none"
             >
               <option value="all">全部</option>
               <option value="pending">待处理</option>
@@ -181,7 +181,7 @@ export function TodoPage() {
         </div>
 
         {advancedOpen ? (
-          <div className="mt-3 grid grid-cols-2 gap-3 border border-line bg-glass-muted p-3 md:grid-cols-3 lg:grid-cols-5">
+          <div className="mt-3 grid grid-cols-2 gap-3 rounded-console-lg border border-line bg-glass-muted p-3 md:grid-cols-3 lg:grid-cols-5">
             <FilterSelect label="时间" value={filters.timeFilter} onChange={(value) => setFilters({ ...filters, timeFilter: value })}
               options={[["all", "全部"], ["overdue", "已逾期"], ["no_due_date", "无截止日期"]]} />
             <FilterSelect label="重复" value={filters.recurring} onChange={(value) => setFilters({ ...filters, recurring: value })}
@@ -269,7 +269,7 @@ function FilterSelect({ label, value, onChange, options }: {
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="border border-line bg-input px-2 py-2 text-sm text-ink outline-none"
+        className="rounded-console border border-line bg-input px-2 py-2 text-sm text-ink outline-none"
       >
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>{optionLabel}</option>

@@ -39,7 +39,7 @@ const WEB_SEARCH_BACKEND_OPTIONS: ReadonlyArray<readonly [AgentWebSearchBackend,
   ["disabled", "关闭联网搜索"],
 ];
 
-const SELECT_CLASS = "border border-line bg-input px-3 py-2 text-sm text-ink outline-none";
+const SELECT_CLASS = "rounded-console border border-line bg-input px-3 py-2 text-sm text-ink outline-none";
 
 /**
  * Agent 策略结构化编辑器：知识检索、联网搜索、模型路线与场景白名单。
@@ -252,7 +252,7 @@ function WebSearchSection({ draft, onDraftChange, editable, tavilyKeyConfigured,
           </select>
         )}
       </Field>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Tavily 结果数" id="agent-web-search-max-results" hint="1 到 10 之间的整数">
           {(props) => (
             <Input
@@ -401,7 +401,7 @@ function AgentScenes({ draft, agent, editable, onDraftChange, onSaveScene, busy 
               {options.length === 0 ? (
                 <p className="m-0 text-xs text-muted">当前没有可用的已注册工具。</p>
               ) : (
-                <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3" title={undefined}>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3" title={undefined}>
                   {options.map((tool) => (
                     <label
                       key={tool.name}

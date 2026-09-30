@@ -227,7 +227,7 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
             setStatusFilter(event.target.value);
             setVisibleLimit(50);
           }}
-          className="border border-line bg-input px-2 py-1.5 text-sm text-ink outline-none"
+          className="rounded-console border border-line bg-input px-2 py-1.5 text-sm text-ink outline-none"
         >
           {MODEL_FILTERS.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -241,7 +241,7 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
         </p>
       ) : null}
 
-      <div className="flex flex-col divide-y divide-line-inner border border-line">
+      <div className="flex flex-col divide-y divide-line-inner rounded-console-lg border border-line">
         {visibleRows.length === 0 && !metadataQuery.isPending ? (
           <p className="m-0 px-3 py-6 text-sm text-muted">当前没有匹配的展示条目；可先「同步模型」或「添加模型」。</p>
         ) : null}
@@ -349,7 +349,7 @@ function ModelRow({ row, connection, discoveryRevision, catalogSource, editable,
   });
 
   return (
-    <article className="flex items-start gap-3 px-3 py-2.5">
+    <article className="flex flex-col gap-3 px-3 py-2.5 sm:flex-row sm:items-start sm:gap-3">
       <Switch
         checked={enabledLocally}
         disabled={busy || !editable}
@@ -393,8 +393,8 @@ function ModelRow({ row, connection, discoveryRevision, catalogSource, editable,
           <ModelDetails metadata={row.metadata} catalogSource={catalogSource} />
         </details>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <div className="flex gap-1.5">
+      <div className="flex shrink-0 flex-col gap-1.5 sm:items-end">
+        <div className="flex flex-1 gap-1.5 sm:flex-none">
           <Button
             variant="secondary"
             className="px-2.5 py-1 text-xs"
@@ -406,12 +406,12 @@ function ModelRow({ row, connection, discoveryRevision, catalogSource, editable,
           <Button variant="secondary" className="px-2.5 py-1 text-xs" onClick={onEdit}>编辑</Button>
         </div>
         {routes.length > 0 ? (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <select
               aria-label={`为 ${row.id} 选择 Route`}
               value={selectedRoute}
               onChange={(event) => setSelectedRoute(event.target.value)}
-              className="border border-line bg-input px-2 py-1 text-xs text-ink outline-none"
+              className="rounded-console border border-line bg-input px-2 py-1 text-xs text-ink outline-none"
             >
               {routes.map((name) => (
                 <option key={name} value={name}>{name}</option>
@@ -518,7 +518,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
     } as Partial<ModelOverrideDraft>);
   };
   return (
-    <div className="border border-line bg-surface p-3">
+    <div className="rounded-console-lg border border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="m-0 text-sm font-bold">本地新增 / 编辑模型</p>
         <Button variant="secondary" className="px-2 py-0.5 text-xs" onClick={onCancel}>收起表单</Button>
@@ -529,7 +529,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
           模型 ID
           <input
             aria-label="模型 ID"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.id}
             readOnly={Boolean(draft.id)}
             placeholder="例如 my-model-v2"
@@ -541,7 +541,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
           显示名称（留空继承）
           <input
             aria-label="显示名称（留空继承）"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.display_name}
             onChange={(event) => patch({ display_name: event.target.value })}
           />
@@ -552,7 +552,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
             aria-label="上下文窗口（token，留空继承）"
             type="number"
             min={0}
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.context_window}
             onChange={(event) => patch({ context_window: event.target.value })}
           />
@@ -563,7 +563,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
             aria-label="最大输出（token，留空继承）"
             type="number"
             min={0}
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.max_output_tokens}
             onChange={(event) => patch({ max_output_tokens: event.target.value })}
           />
@@ -572,7 +572,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
           模型状态
           <select
             aria-label="模型状态"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.status}
             onChange={(event) => patch({ status: event.target.value })}
           >
@@ -586,7 +586,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
           本地启用状态
           <select
             aria-label="本地启用状态"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.enabled}
             onChange={(event) => patch({ enabled: event.target.value })}
           >
@@ -602,7 +602,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
             type="number"
             min={0}
             step="any"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.inputPrice}
             onChange={(event) => patch({ inputPrice: event.target.value })}
           />
@@ -614,7 +614,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
             type="number"
             min={0}
             step="any"
-            className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+            className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
             value={draft.outputPrice}
             onChange={(event) => patch({ outputPrice: event.target.value })}
           />
@@ -656,7 +656,7 @@ function ModelOverrideEditor({ draft, revision, disabled, busy, onChange, onCanc
             {`${CAPABILITY_LABELS[key]} · 声明能力`}
             <select
               aria-label={`${CAPABILITY_LABELS[key]} · 声明能力`}
-              className="border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2 text-sm font-normal text-ink outline-none"
               value={draft.claims[key]}
               onChange={(event) => patch({ claims: { ...draft.claims, [key]: event.target.value } })}
             >

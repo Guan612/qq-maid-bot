@@ -216,8 +216,8 @@ export function ConfigurationPage() {
                   aria-selected={activeGroup === group.id}
                   title={group.description}
                   onClick={() => changeGroup(group.id)}
-                  className={`border border-line px-3 py-1.5 text-xs font-bold transition-colors ${
-                    activeGroup === group.id ? "bg-accent-soft text-accent" : "text-muted hover:bg-accent-soft hover:text-ink"
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                    activeGroup === group.id ? "border-transparent bg-accent text-accent-contrast" : "border-line text-muted hover:bg-accent-soft hover:text-ink"
                   }`}
                 >
                   {group.label}
@@ -394,7 +394,7 @@ export function ConfigurationPage() {
 /** Agent 策略的保存状态摘要：revision、来源与待重启标记；编辑能力见 agent-editor.tsx。 */
 function AgentStatusCard({ agent }: { agent: NonNullable<ConfigurationSnapshot["agent"]> }) {
   return (
-    <section aria-label="Agent 策略状态" className="border border-line bg-glass-muted p-4">
+    <section aria-label="Agent 策略状态" className="rounded-console-lg rounded-console-lg border border-line bg-glass-muted p-4">
       <h3 className="m-0 mb-2 text-base font-bold">Agent 策略状态</h3>
       {!agent.fileExists ? (
         <p className="m-0 text-sm text-warning">Agent 策略文件尚不可用；请检查默认 config/agent.toml 是否可写。</p>

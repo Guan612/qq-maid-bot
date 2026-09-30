@@ -116,7 +116,7 @@ export function TodoCreateDialog({
               {...props}
               value={form.state.values.targetRef}
               onChange={(event) => form.setFieldValue("targetRef", event.target.value)}
-              className="border border-line bg-input px-3 py-2.5 text-ink outline-none"
+              className="rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none"
             >
               <option value="">{targetsLoading ? "正在加载目标…" : "选择目标…"}</option>
               {targets.map((target) => (
@@ -143,7 +143,7 @@ export function TodoCreateDialog({
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  className="border border-line bg-input px-3 py-2.5 text-ink outline-none"
+                  className="rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none"
                 />
               )}
             </Field>
@@ -198,7 +198,7 @@ export function TodoCreateDialog({
                     {...props}
                     value={field.state.value}
                     onChange={(event) => field.handleChange(event.target.value as TodoCreateFormValues["recurrenceKind"])}
-                    className="border border-line bg-input px-3 py-2.5 text-ink outline-none"
+                    className="rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none"
                   >
                     <option value="none">不重复</option>
                     <option value="interval">间隔重复</option>
@@ -233,7 +233,7 @@ export function TodoCreateDialog({
                           {...props}
                           value={field.state.value}
                           onChange={(event) => field.handleChange(event.target.value as TodoCreateFormValues["recurrenceUnit"])}
-                          className="border border-line bg-input px-3 py-2.5 text-ink outline-none"
+                          className="rounded-console border border-line bg-input px-3 py-2.5 text-ink outline-none"
                         >
                           <option value="minute">分钟</option>
                           <option value="hour">小时</option>

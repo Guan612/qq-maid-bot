@@ -12,10 +12,10 @@ const TONE_SHAPES: Readonly<Record<SignalTone, string>> = {
 };
 
 const TONE_CLASSES: Readonly<Record<SignalTone, string>> = {
-  success: "text-success",
-  warning: "text-warning",
+  success: "border-success/40 bg-success-soft text-success",
+  warning: "border-warning/40 bg-warning-soft text-warning",
   neutral: "text-muted",
-  error: "text-error",
+  error: "border-error/40 bg-error-soft text-error",
 };
 
 type StatusBadgeProps = {
@@ -32,7 +32,7 @@ export function StatusBadge({ tone, label, value, className }: StatusBadgeProps)
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 border border-line bg-glass-muted px-2 py-1 font-mono text-xs font-bold tracking-wide",
+        "inline-flex items-center gap-1.5 rounded-full border bg-glass-muted px-2.5 py-1 font-mono text-xs font-bold tracking-wide",
         TONE_CLASSES[tone],
         className,
       )}
