@@ -250,11 +250,14 @@ function BuiltinProviderPane({
   onSecretDraftChange,
   onRequestSecretClear,
 }: BuiltinPaneProps) {
-  const providerFields = fields.filter((field) => field.key.startsWith(`provider.${id}.`));
+  // 普通配置与密钥使用不同草稿和保存协议，secret 不得进入 PublicFieldRow。
+  const providerFields = fields.filter((field) => field.sensitivity !== "secret" && field.key.startsWith(`provider.${id}.`));
   const enabledField = providerFields.find((field) => field.key === `provider.${id}.enabled`);
   const addressField = providerFields.find((field) => field.key === `provider.${id}.base_url`);
   const extraFields = providerFields.filter((field) => field !== enabledField && field !== addressField);
   const secretField = secretFields.find((field) => field.key === `provider.${id}.api_key`);
+  const credentialRevision = secretField?.revision ?? "missing";
+  const diagnosticKey = JSON.stringify([id, snapshot.revision, credentialRevision]);
   const secret = secretField ? secretDraft[secretField.key] : undefined;
   const enabled = enabledField ? (publicDraft[enabledField.key] ?? configInputValue(enabledField)) !== "false" : true;
   const dirty = providerFields.some((field) => publicDraft[field.key] !== undefined);
@@ -333,8 +336,8 @@ function BuiltinProviderPane({
         </details>
       ) : null}
 
-      <ConnectionTestPanel id={id} revision={snapshot.revision} credentialRevision="" enabled={enabled} />
-      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={enabled} discoveryRevision={snapshot.revision} />
+      <ConnectionTestPanel key={diagnosticKey} id={id} revision={snapshot.revision} credentialRevision={credentialRevision} enabled={enabled} />
+      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={enabled} discoveryRevision={snapshot.revision} credentialRevision={credentialRevision} />
     </section>
   );
 }
@@ -514,8 +517,8 @@ function CustomProviderPane({ snapshot, id, saved, preset, credential, presets, 
         </div>
       </details>
 
-      <ConnectionTestPanel id={id} revision={agent.revision} credentialRevision={credential?.revision ?? ""} enabled={agent.editable === true && saved.enabled !== false} />
-      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={saved.enabled !== false} discoveryRevision={agent.revision} />
+      <ConnectionTestPanel key={JSON.stringify([id, agent.revision, credential?.revision])} id={id} revision={agent.revision} credentialRevision={credential?.revision ?? ""} enabled={agent.editable === true && saved.enabled !== false} />
+      <ModelManagerPanel snapshot={snapshot} connection={id} enabled={saved.enabled !== false} discoveryRevision={agent.revision} credentialRevision={credential?.revision ?? "missing"} />
 
       <p aria-live="polite" role={error ? "alert" : "status"} className={`m-0 text-xs font-semibold ${error ? "text-error" : "text-muted"}`}>
         {error}

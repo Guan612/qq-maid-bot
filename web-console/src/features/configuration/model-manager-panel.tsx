@@ -59,12 +59,14 @@ type ModelManagerPanelProps = {
   enabled: boolean;
   /** 测试 / 发现使用的 revision：内置连接用 runtime revision，自定义连接用 agent revision。 */
   discoveryRevision: string;
+  /** 密钥独立于连接配置更新，诊断必须同时绑定两者版本。 */
+  credentialRevision: string;
 };
 
 /** Connection 模型管理面板（Cherry Studio 风格，内联在供应商详情栏）：
  * 发现（同步模型）、本地 metadata/目录合并展示、逐模型连通性检查、启停开关与加入 Route。
  * 模型与价格仅供参考：Advertised 为声明，Verified 能力未知，同步成功不等于真实调用成功。 */
-export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevision }: ModelManagerPanelProps) {
+export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevision, credentialRevision }: ModelManagerPanelProps) {
   const queryClient = useQueryClient();
   const metadataQuery = useQuery({
     queryKey: ["provider-model-metadata", connection],
@@ -247,7 +249,8 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
         ) : null}
         {visibleRows.slice(0, visibleLimit).map((row) => (
           <ModelRow
-            key={row.id}
+            // 只重建诊断所在行，保留面板内尚未保存的编辑草稿；旧请求无法回写新行。
+            key={JSON.stringify([connection, row.id, discoveryRevision, credentialRevision])}
             row={row}
             connection={connection}
             discoveryRevision={discoveryRevision}
@@ -290,8 +293,11 @@ export function ModelManagerPanel({ snapshot, connection, enabled, discoveryRevi
             }
             try {
               const model = buildModelOverride(draft);
-              saveOverride({ ...model, provider: metadata.provider }, draftRevision);
-              setDraft(null);
+              // 仅本次编辑保存成功后关闭；失败或已切换的草稿继续保留。
+              overrideMutation.mutate(
+                { model: { ...model, provider: metadata.provider }, expectedRevision: draftRevision },
+                { onSuccess: () => setDraft((current) => current === draft ? null : current) },
+              );
             } catch (cause) {
               setError(cause instanceof Error ? cause.message : "模型信息无效");
             }

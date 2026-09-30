@@ -13,7 +13,6 @@ import type { TransitionImage } from "../../background.js";
 import { Button } from "../ui/button.js";
 import { ConfirmDialog } from "../ui/dialog.js";
 import { ConsoleIcon, type ConsoleIconName } from "../ui/icons.js";
-import { ConsoleToastHost } from "../ui/toast.js";
 
 /** 控制台信息架构：导航顺序与旧版 CONSOLE_PAGES 保持一致。 */
 const CONSOLE_PAGES: ReadonlyArray<{ id: string; label: string; icon: ConsoleIconName; to: string }> = [
@@ -76,7 +75,6 @@ export function AppShell() {
 
       <RestartConfirmDialog open={restartOpen} onOpenChange={setRestartOpen} />
       {transitionOverlay}
-      <ConsoleToastHost />
     </>
   );
 }

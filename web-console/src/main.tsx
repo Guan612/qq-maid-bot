@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { createHashHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { getDefaultStore, Provider as JotaiProvider } from "jotai";
+import { getDefaultStore } from "jotai";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AppProviders } from "./app-providers.js";
 import { routeTree } from "./routeTree.gen.js";
 import { bootstrapAuth } from "./stores/auth.js";
 import { themeController, themePresetAtom } from "./stores/theme.js";
@@ -38,13 +39,9 @@ declare module "@tanstack/react-router" {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {/* stores/* 层的所有命令式写入都走 getDefaultStore()；裸 Provider 会另建私有 store，
-        导致认证状态等更新对组件树不可见（页面卡在"正在恢复管理员会话"），必须显式共用默认 store。 */}
-    <JotaiProvider store={getDefaultStore()}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </JotaiProvider>
+    <AppProviders client={queryClient}>
+      <RouterProvider router={router} />
+    </AppProviders>
   </StrictMode>,
 );
 
